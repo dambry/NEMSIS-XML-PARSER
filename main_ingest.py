@@ -455,6 +455,11 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
 
                 fk_constraint_name_quoted = f'"{fk_constraint_name_unquoted}"'
 
+                # Check if an equivalent FK definition already exists
+                if foreign_key_exists(cursor, child_table_name_lowercase, parent_table_name_lowercase):
+                    print(f"Info: Foreign key definition already exists for {child_table_name_lowercase} -> {parent_table_name_lowercase}. Skipping creation of {fk_constraint_name_quoted}.")
+                    continue
+
                 alter_sql = f"""
                     ALTER TABLE "{child_table_name_lowercase}"
                     ADD CONSTRAINT {fk_constraint_name_quoted}
@@ -530,6 +535,58 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
         return False
     finally:
         _table_column_cache.clear()  # Clear cache after processing each file
+
+
+def foreign_key_exists(cursor, child_table_name_lowercase, parent_table_name_lowercase, child_column_name_lowercase="parent_element_id", parent_column_name_lowercase="element_id"):
+    """
+    Checks if a foreign key constraint already exists between the specified tables and columns.
+    Names are expected to be already sanitized and lowercased.
+    """
+    # Check information_schema for an existing FK constraint that matches the definition
+    # This query checks for a constraint that links the specific child table/column
+    # to the specific parent table/column.
+    query = """
+    SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.constraint_schema = kcu.constraint_schema
+        JOIN information_schema.referential_constraints AS rc
+            ON tc.constraint_name = rc.constraint_name
+            AND tc.constraint_schema = rc.constraint_schema
+        JOIN information_schema.table_constraints AS tc_parent
+            ON rc.unique_constraint_name = tc_parent.constraint_name
+            AND rc.unique_constraint_schema = tc_parent.constraint_schema
+        JOIN information_schema.key_column_usage AS kcu_parent
+            ON tc_parent.constraint_name = kcu_parent.constraint_name
+            AND tc_parent.constraint_schema = kcu_parent.constraint_schema
+
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public'  -- Assuming public schema
+        AND tc.table_name = %s          -- Child table
+        AND kcu.column_name = %s        -- Child column
+        AND tc_parent.table_schema = 'public' -- Assuming public schema for parent
+        AND tc_parent.table_name = %s   -- Parent table
+        AND kcu_parent.column_name = %s -- Parent column
+    );
+    """
+    try:
+        cursor.execute(query, (child_table_name_lowercase, child_column_name_lowercase, parent_table_name_lowercase, parent_column_name_lowercase))
+        return cursor.fetchone()[0]
+    except psycopg2.Error as e:
+        # If the transaction is already aborted, this check itself might fail.
+        # We should report this specific error to distinguish from other FK logic errors.
+        if "current transaction is aborted" in str(e).lower():
+            print(f"Info: Could not check FK existence for {child_table_name_lowercase} -> {parent_table_name_lowercase} because transaction is aborted. Error: {e}")
+            # In this state, we can't know, but trying to create it will also fail.
+            # Returning False might lead to an attempt to create, which will then show the aborted transaction error again.
+            # Returning True would skip, which might be misleading if the FK doesn't exist.
+            # For now, let it try to create, as the transaction is already doomed.
+            return False # Or re-raise, but the goal is to let the FK loop try to report.
+        else:
+            print(f"Error checking FK existence for {child_table_name_lowercase} -> {parent_table_name_lowercase}: {e}")
+        return False # Default to false on error to attempt creation (which might then fail more informatively)
 
 
 def main():
