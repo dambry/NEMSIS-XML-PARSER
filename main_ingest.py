@@ -1,12 +1,13 @@
 import psycopg2
 import psycopg2.extras
-from psycopg2 import errors as psycopg2_errors # Import for specific error codes
+from psycopg2 import errors as psycopg2_errors  # Import for specific error codes
 import uuid
 import datetime
 import os
 import hashlib
 import argparse
 import shutil
+import sys
 import re  # For more advanced sanitization if needed
 
 # Project-specific imports
@@ -252,12 +253,12 @@ def delete_existing_pcr_data(conn, pcr_uuid):
                             )
                     except psycopg2.Error as e:
                         print(f"Error deleting from {table_name_quoted}: {e}")
-                        raise # Re-raise the exception
+                        raise  # Re-raise the exception
         if deleted_total > 0:
             print(f"Total rows deleted for PCR {pcr_uuid}: {deleted_total}")
     except psycopg2.Error as e:
         print(f"DB error during PCR deletion: {e}")
-        raise # Re-raise the exception
+        raise  # Re-raise the exception
 
 
 def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
@@ -289,7 +290,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
         return False
 
     elements_data = parse_xml_file(xml_file_path)
-    foreign_key_definitions = [] # Initialize list for FKs
+    foreign_key_definitions = []  # Initialize list for FKs
 
     if not elements_data:
         print(f"No elements parsed from {xml_file_path} or parsing error occurred.")
@@ -331,7 +332,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 "No PatientCareReport UUIDs found in this file; no pre-deletion of data will occur."
             )
 
-        current_file_foreign_keys = set() # Using a set to store tuples for uniqueness
+        current_file_foreign_keys = set()  # Using a set to store tuples for uniqueness
 
         for element in elements_data:
             # Retrieve parent_table_suggestion from the element
@@ -355,8 +356,12 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             # Logic for preparing foreign key definition
             if parent_table_suggestion_raw and element.get("parent_element_id"):
                 # Ensure parent_table_suggestion is sanitized and lowercased, similar to child table names
-                sanitized_parent_table_name = sanitize_xml_name(parent_table_suggestion_raw)
-                if sanitized_parent_table_name: # Ensure it's not empty after sanitization
+                sanitized_parent_table_name = sanitize_xml_name(
+                    parent_table_suggestion_raw
+                )
+                if (
+                    sanitized_parent_table_name
+                ):  # Ensure it's not empty after sanitization
                     # Add to set as a tuple: (child_table_raw, parent_table_raw_sanitized)
                     # table_name_raw is already sanitized from ensure_table_and_columns
                     current_file_foreign_keys.add(
@@ -392,30 +397,50 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             except psycopg2.Error as e:
                 print(f"DB Insert Error: {e} SQL: {sql} VALS:{values}")
                 raise  # Reraise to trigger transaction rollback
-
-        print("--- Successfully completed data insertion loop. Proceeding to Foreign Key creation. ---")
+        if "--verbose" in sys.argv:
+            print(
+                f"DB Connection Status before FK processing: {db_conn.status}, Transaction status: {db_conn.get_transaction_status()}"
+            )
+        print(
+            "--- Successfully completed data insertion loop. Proceeding to Foreign Key creation. ---"
+        )
         # After processing all elements, attempt to create foreign key constraints
-        critical_fk_error_occurred = False # Initialize flag
+        critical_fk_error_occurred = False  # Initialize flag
         if current_file_foreign_keys:
-            print(f"Attempting to create {len(current_file_foreign_keys)} unique foreign key constraints for {xml_file_path}...")
-            for child_table_raw, parent_table_raw_sanitized in current_file_foreign_keys:
+            print(
+                f"Attempting to create {len(current_file_foreign_keys)} unique foreign key constraints for {xml_file_path}..."
+            )
+            if "--verbose" in sys.argv:
+                print(
+                    f"DB Connection Status at start of FK loop: {db_conn.status}, Transaction status: {db_conn.get_transaction_status()}"
+                )
+            for (
+                child_table_raw,
+                parent_table_raw_sanitized,
+            ) in current_file_foreign_keys:
                 child_table_name_lowercase = child_table_raw.lower()
                 parent_table_name_lowercase = parent_table_raw_sanitized.lower()
 
-                ideal_constraint_name = f"fk_{child_table_raw}_{parent_table_raw_sanitized}"
+                ideal_constraint_name = (
+                    f"fk_{child_table_raw}_{parent_table_raw_sanitized}"
+                )
                 fk_constraint_name_unquoted = ""
 
                 if len(ideal_constraint_name) <= 63:
                     fk_constraint_name_unquoted = ideal_constraint_name
                 else:
-                    hash_suffix = hashlib.md5(ideal_constraint_name.encode()).hexdigest()[:6]
+                    hash_suffix = hashlib.md5(
+                        ideal_constraint_name.encode()
+                    ).hexdigest()[:6]
                     prefix = "fk_"
                     len_prefix = len(prefix)
                     len_hash = len(hash_suffix)
-                    len_separator_before_hash = 1 # for the _ before the hash
+                    len_separator_before_hash = 1  # for the _ before the hash
 
                     # Max length for the combined "childpart_parentpart" string
-                    max_len_for_tables_part = 63 - len_prefix - len_hash - len_separator_before_hash
+                    max_len_for_tables_part = (
+                        63 - len_prefix - len_hash - len_separator_before_hash
+                    )
 
                     child_part = child_table_raw
                     parent_part = parent_table_raw_sanitized
@@ -424,30 +449,45 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                     available_for_names_plus_underscore = max_len_for_tables_part
 
                     # If current combined length (child + _ + parent) is too long
-                    if (len(child_part) + 1 + len(parent_part)) > available_for_names_plus_underscore:
+                    if (
+                        len(child_part) + 1 + len(parent_part)
+                    ) > available_for_names_plus_underscore:
                         # Max length for each name part, aiming for roughly equal truncation
                         # -1 for the underscore separating child and parent parts
-                        available_for_child_and_parent_only = available_for_names_plus_underscore - 1
+                        available_for_child_and_parent_only = (
+                            available_for_names_plus_underscore - 1
+                        )
 
                         # Attempt to allocate space, giving more to longer names if possible,
                         # but simple equal split first.
                         max_len_child_part = available_for_child_and_parent_only // 2
-                        max_len_parent_part = available_for_child_and_parent_only - max_len_child_part
+                        max_len_parent_part = (
+                            available_for_child_and_parent_only - max_len_child_part
+                        )
 
                         if len(child_part) > max_len_child_part:
                             child_part = child_part[:max_len_child_part]
                             # Recalculate max_len_parent_part based on actual truncated child_part length
-                            max_len_parent_part = available_for_child_and_parent_only - len(child_part)
+                            max_len_parent_part = (
+                                available_for_child_and_parent_only - len(child_part)
+                            )
 
                         if len(parent_part) > max_len_parent_part:
                             parent_part = parent_part[:max_len_parent_part]
 
                         # Final check if parent_part truncation made child_part too long again (if parent was very short initially)
-                        if (len(child_part) + 1 + len(parent_part)) > available_for_names_plus_underscore:
-                             child_part = child_part[:available_for_child_and_parent_only - len(parent_part) -1]
+                        if (
+                            len(child_part) + 1 + len(parent_part)
+                        ) > available_for_names_plus_underscore:
+                            child_part = child_part[
+                                : available_for_child_and_parent_only
+                                - len(parent_part)
+                                - 1
+                            ]
 
-
-                    fk_constraint_name_unquoted = f"{prefix}{child_part}_{parent_part}_{hash_suffix}"
+                    fk_constraint_name_unquoted = (
+                        f"{prefix}{child_part}_{parent_part}_{hash_suffix}"
+                    )
 
                     # Absolute final truncation if logic somehow failed (should be rare)
                     if len(fk_constraint_name_unquoted) > 63:
@@ -456,8 +496,12 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 fk_constraint_name_quoted = f'"{fk_constraint_name_unquoted}"'
 
                 # Check if an equivalent FK definition already exists
-                if foreign_key_exists(cursor, child_table_name_lowercase, parent_table_name_lowercase):
-                    print(f"Info: Foreign key definition already exists for {child_table_name_lowercase} -> {parent_table_name_lowercase}. Skipping creation of {fk_constraint_name_quoted}.")
+                if foreign_key_exists(
+                    cursor, child_table_name_lowercase, parent_table_name_lowercase
+                ):
+                    print(
+                        f"Info: Foreign key definition already exists for {child_table_name_lowercase} -> {parent_table_name_lowercase}. Skipping creation of {fk_constraint_name_quoted}."
+                    )
                     continue
 
                 alter_sql = f"""
@@ -467,33 +511,47 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                     REFERENCES "{parent_table_name_lowercase}" ("element_id")
                     ON DELETE CASCADE;
                 """
-                print(f"Attempting to execute FK DDL: {alter_sql.strip()}") # Log DDL attempt
+                print(
+                    f"Attempting to execute FK DDL: {alter_sql.strip()}"
+                )  # Log DDL attempt
                 try:
                     cursor.execute(alter_sql)
-                    print(f"Successfully created FK: {child_table_name_lowercase} -> {parent_table_name_lowercase} ({fk_constraint_name_quoted})")
-                except psycopg2_errors.DuplicateObject as e: # Typically error code 42710
+                    print(
+                        f"Successfully created FK: {child_table_name_lowercase} -> {parent_table_name_lowercase} ({fk_constraint_name_quoted})"
+                    )
+                except (
+                    psycopg2_errors.DuplicateObject
+                ) as e:  # Typically error code 42710
                     # This means the constraint name (or possibly the constraint definition itself) already exists.
                     # This is common if reprocessing a file or if multiple identical FK relationships are defined.
-                    print(f"Warning: FK constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase} likely already exists or is a duplicate definition. Details: {e}")
+                    print(
+                        f"Warning: FK constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase} likely already exists or is a duplicate definition. Details: {e}"
+                    )
                     # Continue to the next FK definition.
                 except psycopg2.Error as e:
                     # For any other psycopg2.Error, it's unexpected and potentially critical.
-                    print(f"Critical Error creating FK {fk_constraint_name_quoted} on {child_table_name_lowercase} referencing {parent_table_name_lowercase}.")
+                    print(
+                        f"Critical Error creating FK {fk_constraint_name_quoted} on {child_table_name_lowercase} referencing {parent_table_name_lowercase}."
+                    )
                     print(f"SQL: {alter_sql.strip()}")
                     print(f"Error Details: {e}")
                     # Re-raise the exception to trigger the outer transaction rollback for the entire file.
                     # MODIFICATION: Instead of re-raising, log and set a flag.
                     # raise
-                    critical_fk_error_occurred = True # Set flag here
+                    critical_fk_error_occurred = True  # Set flag here
             print("Foreign key constraint creation phase completed.")
 
         if critical_fk_error_occurred:
             # If any critical FK error happened, we should not commit.
             # Raise an exception to trigger the rollback in the calling try-except block.
-            raise Exception(f"One or more critical errors occurred during foreign key creation for {xml_file_path}. Transaction will be rolled back.")
+            raise Exception(
+                f"One or more critical errors occurred during foreign key creation for {xml_file_path}. Transaction will be rolled back."
+            )
 
         db_conn.commit()  # Commit transaction if all elements and FKs processed successfully
-        print(f"All elements and FKs from {xml_file_path} successfully ingested and committed.")
+        print(
+            f"All elements and FKs from {xml_file_path} successfully ingested and committed."
+        )
         log_processed_file(
             db_conn,
             processed_file_id,
@@ -537,7 +595,13 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
         _table_column_cache.clear()  # Clear cache after processing each file
 
 
-def foreign_key_exists(cursor, child_table_name_lowercase, parent_table_name_lowercase, child_column_name_lowercase="parent_element_id", parent_column_name_lowercase="element_id"):
+def foreign_key_exists(
+    cursor,
+    child_table_name_lowercase,
+    parent_table_name_lowercase,
+    child_column_name_lowercase="parent_element_id",
+    parent_column_name_lowercase="element_id",
+):
     """
     Checks if a foreign key constraint already exists between the specified tables and columns.
     Names are expected to be already sanitized and lowercased.
@@ -572,21 +636,35 @@ def foreign_key_exists(cursor, child_table_name_lowercase, parent_table_name_low
     );
     """
     try:
-        cursor.execute(query, (child_table_name_lowercase, child_column_name_lowercase, parent_table_name_lowercase, parent_column_name_lowercase))
+        cursor.execute(
+            query,
+            (
+                child_table_name_lowercase,
+                child_column_name_lowercase,
+                parent_table_name_lowercase,
+                parent_column_name_lowercase,
+            ),
+        )
         return cursor.fetchone()[0]
     except psycopg2.Error as e:
         # If the transaction is already aborted, this check itself might fail.
         # We should report this specific error to distinguish from other FK logic errors.
         if "current transaction is aborted" in str(e).lower():
-            print(f"Info: Could not check FK existence for {child_table_name_lowercase} -> {parent_table_name_lowercase} because transaction is aborted. Error: {e}")
+            print(
+                f"Info: Could not check FK existence for {child_table_name_lowercase} -> {parent_table_name_lowercase} because transaction is aborted. Error: {e}"
+            )
             # In this state, we can't know, but trying to create it will also fail.
             # Returning False might lead to an attempt to create, which will then show the aborted transaction error again.
             # Returning True would skip, which might be misleading if the FK doesn't exist.
             # For now, let it try to create, as the transaction is already doomed.
-            return False # Or re-raise, but the goal is to let the FK loop try to report.
+            return (
+                False  # Or re-raise, but the goal is to let the FK loop try to report.
+            )
         else:
-            print(f"Error checking FK existence for {child_table_name_lowercase} -> {parent_table_name_lowercase}: {e}")
-        return False # Default to false on error to attempt creation (which might then fail more informatively)
+            print(
+                f"Error checking FK existence for {child_table_name_lowercase} -> {parent_table_name_lowercase}: {e}"
+            )
+        return False  # Default to false on error to attempt creation (which might then fail more informatively)
 
 
 def main():
