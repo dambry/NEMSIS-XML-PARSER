@@ -252,10 +252,12 @@ def delete_existing_pcr_data(conn, pcr_uuid):
                             )
                     except psycopg2.Error as e:
                         print(f"Error deleting from {table_name_quoted}: {e}")
+                        raise # Re-raise the exception
         if deleted_total > 0:
             print(f"Total rows deleted for PCR {pcr_uuid}: {deleted_total}")
     except psycopg2.Error as e:
         print(f"DB error during PCR deletion: {e}")
+        raise # Re-raise the exception
 
 
 def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
@@ -391,6 +393,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 print(f"DB Insert Error: {e} SQL: {sql} VALS:{values}")
                 raise  # Reraise to trigger transaction rollback
 
+        print("--- Successfully completed data insertion loop. Proceeding to Foreign Key creation. ---")
         # After processing all elements, attempt to create foreign key constraints
         if current_file_foreign_keys:
             print(f"Attempting to create {len(current_file_foreign_keys)} unique foreign key constraints for {xml_file_path}...")
