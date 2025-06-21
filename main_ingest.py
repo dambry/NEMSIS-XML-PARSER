@@ -9,6 +9,7 @@ import argparse
 import shutil
 import sys
 import re  # For more advanced sanitization if needed
+from tqdm import tqdm # For progress bar
 
 # Project-specific imports
 try:
@@ -334,7 +335,8 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
 
         current_file_foreign_keys = set()  # Using a set to store tuples for uniqueness
 
-        for element in elements_data:
+        print(f"Processing {len(elements_data)} elements from {xml_file_path}...")
+        for element in tqdm(elements_data, desc="Ingesting elements", unit="element"):
             # Retrieve parent_table_suggestion from the element
             parent_table_suggestion_raw = element.get("parent_table_suggestion")
 
@@ -672,7 +674,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="NEMSIS XML Dynamic Data Ingestion Tool V4 (PostgreSQL)"
     )
-    parser.add_argument("xml_file", help="Path to the NEMSIS XML file to process.")
+    parser.add_argument("input_path", help="Path to the NEMSIS XML file or directory of XML files to process.")
     parser.add_argument(
         "--archive-dir",
         default=ARCHIVE_DIR,
@@ -701,8 +703,8 @@ def main():
                 os.makedirs(ARCHIVE_DIR)
             except OSError as e:
                 print(f"Error creating archive dir {ARCHIVE_DIR}: {e}")
+                return # Exit if archive directory cannot be created
 
-        # Uses the constant directly
         ingestion_schema_id = get_ingestion_logic_schema_id(
             conn, target_ingestion_logic_version
         )
@@ -718,12 +720,43 @@ def main():
             f"Using IngestionSchemaID: {ingestion_schema_id} for Version: {target_ingestion_logic_version}"
         )
 
-        success = process_xml_file(conn, args.xml_file, ingestion_schema_id)
-
-        if success:
-            print(f"--- Ingestion for {args.xml_file} completed successfully. ---")
+        files_to_process = []
+        if os.path.isfile(args.input_path):
+            if args.input_path.lower().endswith(".xml"):
+                files_to_process.append(args.input_path)
+            else:
+                print(f"Skipping non-XML file: {args.input_path}")
+        elif os.path.isdir(args.input_path):
+            for filename in os.listdir(args.input_path):
+                if filename.lower().endswith(".xml"):
+                    files_to_process.append(os.path.join(args.input_path, filename))
         else:
-            print(f"--- Ingestion for {args.xml_file} failed. See logs. ---")
+            print(f"Error: Input path {args.input_path} is not a valid file or directory.")
+            return
+
+        if not files_to_process:
+            print(f"No XML files found to process in {args.input_path}.")
+            return
+
+        print(f"Found {len(files_to_process)} XML file(s) to process.")
+
+        overall_success_count = 0
+        overall_failure_count = 0
+
+        for xml_file_path in tqdm(files_to_process, desc="Overall Progress", unit="file"):
+            print(f"\nStarting processing for: {xml_file_path}")
+            success = process_xml_file(conn, xml_file_path, ingestion_schema_id)
+            if success:
+                print(f"--- Successfully processed {xml_file_path} ---")
+                overall_success_count += 1
+            else:
+                print(f"--- Failed to process {xml_file_path} ---")
+                overall_failure_count += 1
+
+        print("\n--- Ingestion Summary ---")
+        print(f"Successfully processed files: {overall_success_count}")
+        print(f"Failed to process files: {overall_failure_count}")
+
 
     except psycopg2.Error as e:
         print(f"Critical PostgreSQL error in main: {e}")
