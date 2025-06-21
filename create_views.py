@@ -213,210 +213,212 @@ if __name__ == "__main__":
         print("Could not connect to the database.")
     else:
         cursor = conn.cursor()
-        # vitals
-        filtered_structure = filter_structure(EVITALS_STRUCTURE, cursor)
-        view_name = "v_evitals_flat"
-        evitals_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{evitals_sql}\n")
-        create_view_in_db(conn, view_name, evitals_sql)
-        comment_view_in_db(conn, view_name)
-        # procedures
-        filtered_structure = filter_structure(EPROCEDURES_STRUCTURE, cursor)
-        view_name = "v_eprocedures_flat"
-        eprocedures_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eprocedures_sql}\n")
-        create_view_in_db(conn, view_name, eprocedures_sql)
-        comment_view_in_db(conn, view_name)
-        # airway
-        filtered_structure = filter_structure(EAIRWAY_STRUCTURE, cursor)
-        view_name = "v_eairway_flat"
-        eairway_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eairway_sql}\n")
-        create_view_in_db(conn, view_name, eairway_sql)
-        comment_view_in_db(conn, view_name)
-        # crew
-        filtered_structure = filter_structure(ECREW_STRUCTURE, cursor)
-        view_name = "v_ecrew_flat"
-        ecrew_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{ecrew_sql}\n")
-        create_view_in_db(conn, view_name, ecrew_sql)
-        comment_view_in_db(conn, view_name)
-        # device
-        filtered_structure = filter_structure(EDEVICE_STRUCTURE, cursor)
-        view_name = "v_edevice_flat"
-        edevice_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{edevice_sql}\n")
-        create_view_in_db(conn, view_name, edevice_sql)
-        comment_view_in_db(conn, view_name)
-        # arrest
-        filtered_structure = filter_structure(EARREST_STRUCTURE, cursor)
-        view_name = "v_earrest_flat"
-        earrest_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{earrest_sql}\n")
-        create_view_in_db(conn, view_name, earrest_sql)
-        comment_view_in_db(conn, view_name)
-        # dispatch
-        filtered_structure = filter_structure(EDISPATCH_STRUCTURE, cursor)
-        view_name = "v_edispatch_flat"
-        edispatch_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{edispatch_sql}\n")
-        create_view_in_db(conn, view_name, edispatch_sql)
-        comment_view_in_db(conn, view_name)
-        # disposition
-        filtered_structure = filter_structure(EDISPOSITION_STRUCTURE, cursor)
-        view_name = "v_edisposition_flat"
-        edisposition_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{edisposition_sql}\n")
-        create_view_in_db(conn, view_name, edisposition_sql)
-        comment_view_in_db(conn, view_name)
-        # exam
-        filtered_structure = filter_structure(EEXAM_STRUCTURE, cursor)
-        view_name = "v_eexam_flat"
-        eexam_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eexam_sql}\n")
-        create_view_in_db(conn, view_name, eexam_sql)
-        comment_view_in_db(conn, view_name)
-        # history
-        filtered_structure = filter_structure(EHISTORY_STRUCTURE, cursor)
-        view_name = "v_ehistory_flat"
-        ehistory_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{ehistory_sql}\n")
-        create_view_in_db(conn, view_name, ehistory_sql)
-        comment_view_in_db(conn, view_name)
-        # injury
-        filtered_structure = filter_structure(EINJURY_STRUCTURE, cursor)
-        view_name = "v_einjury_flat"
-        einjury_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{einjury_sql}\n")
-        create_view_in_db(conn, view_name, einjury_sql)
-        comment_view_in_db(conn, view_name)
-        # lab
-        filtered_structure = filter_structure(ELABS_STRUCTURE, cursor)
-        view_name = "v_elabs_flat"
-        elabs_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{elabs_sql}\n")
-        create_view_in_db(conn, view_name, elabs_sql)
-        comment_view_in_db(conn, view_name)
-        # medications
-        filtered_structure = filter_structure(EMEDICATIONS_STRUCTURE, cursor)
-        view_name = "v_emedications_flat"
-        emedications_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{emedications_sql}\n")
-        create_view_in_db(conn, view_name, emedications_sql)
-        comment_view_in_db(conn, view_name)
-        # other
-        filtered_structure = filter_structure(EOTHER_STRUCTURE, cursor)
-        view_name = "v_eother_flat"
-        eother_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eother_sql}\n")
-        create_view_in_db(conn, view_name, eother_sql)
-        comment_view_in_db(conn, view_name)
-        # outcome
-        filtered_structure = filter_structure(EOUTCOME_STRUCTURE, cursor)
-        view_name = "v_eoutcome_flat"
-        eoutcome_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eoutcome_sql}\n")
-        create_view_in_db(conn, view_name, eoutcome_sql)
-        comment_view_in_db(conn, view_name)
-        # patient
-        filtered_structure = filter_structure(EPATIENT_STRUCTURE, cursor)
-        view_name = "v_epatient_flat"
-        epatient_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{epatient_sql}\n")
-        create_view_in_db(conn, view_name, epatient_sql)
-        comment_view_in_db(conn, view_name)
-        # payment
-        filtered_structure = filter_structure(EPAYMENT_STRUCTURE, cursor)
-        view_name = "v_epayment_flat"
-        epayment_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{epayment_sql}\n")
-        create_view_in_db(conn, view_name, epayment_sql)
-        comment_view_in_db(conn, view_name)
-        # protocols
-        filtered_structure = filter_structure(EPROTOCOLS_STRUCTURE, cursor)
-        view_name = "v_eprotocols_flat"
-        eprotocols_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eprotocols_sql}\n")
-        create_view_in_db(conn, view_name, eprotocols_sql)
-        comment_view_in_db(conn, view_name)
-        # record
-        filtered_structure = filter_structure(ERECORD_STRUCTURE, cursor)
-        view_name = "v_erecord_flat"
-        erecord_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{erecord_sql}\n")
-        create_view_in_db(conn, view_name, erecord_sql)
-        comment_view_in_db(conn, view_name)
-        # response
-        filtered_structure = filter_structure(ERESPONSE_STRUCTURE, cursor)
-        view_name = "v_eresponse_flat"
-        eresponse_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{eresponse_sql}\n")
-        create_view_in_db(conn, view_name, eresponse_sql)
-        comment_view_in_db(conn, view_name)
-        # scene
-        filtered_structure = filter_structure(ESCENE_STRUCTURE, cursor)
-        view_name = "v_escene_flat"
-        escene_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{escene_sql}\n")
-        create_view_in_db(conn, view_name, escene_sql)
-        comment_view_in_db(conn, view_name)
-        # situation
-        filtered_structure = filter_structure(ESITUATION_STRUCTURE, cursor)
-        view_name = "v_esituation_flat"
-        esituation_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{esituation_sql}\n")
-        create_view_in_db(conn, view_name, esituation_sql)
-        comment_view_in_db(conn, view_name)
-        # times
-        filtered_structure = filter_structure(ETIMES_STRUCTURE, cursor)
-        view_name = "v_etimes_flat"
-        etimes_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{etimes_sql}\n")
-        create_view_in_db(conn, view_name, etimes_sql)
-        comment_view_in_db(conn, view_name)
-        # custom configuration
-        filtered_structure = filter_structure(ECUSTOMCONFIGURATION_STRUCTURE, cursor)
-        view_name = "v_ecustomconfiguration_flat"
-        ecustomconfiguration_sql = generate_view_sql(
-            view_name, filtered_structure, cursor
-        )
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{ecustomconfiguration_sql}\n")
-        create_view_in_db(conn, view_name, ecustomconfiguration_sql)
-        comment_view_in_db(conn, view_name)
+        # # vitals
+        # filtered_structure = filter_structure(EVITALS_STRUCTURE, cursor)
+        # view_name = "v_evitals_flat"
+        # evitals_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{evitals_sql}\n")
+        # create_view_in_db(conn, view_name, evitals_sql)
+        # comment_view_in_db(conn, view_name)
+        # # procedures
+        # filtered_structure = filter_structure(EPROCEDURES_STRUCTURE, cursor)
+        # view_name = "v_eprocedures_flat"
+        # eprocedures_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eprocedures_sql}\n")
+        # create_view_in_db(conn, view_name, eprocedures_sql)
+        # comment_view_in_db(conn, view_name)
+        # # airway
+        # filtered_structure = filter_structure(EAIRWAY_STRUCTURE, cursor)
+        # view_name = "v_eairway_flat"
+        # eairway_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eairway_sql}\n")
+        # create_view_in_db(conn, view_name, eairway_sql)
+        # comment_view_in_db(conn, view_name)
+        # # crew
+        # filtered_structure = filter_structure(ECREW_STRUCTURE, cursor)
+        # view_name = "v_ecrew_flat"
+        # ecrew_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{ecrew_sql}\n")
+        # create_view_in_db(conn, view_name, ecrew_sql)
+        # comment_view_in_db(conn, view_name)
+        # # device
+        # filtered_structure = filter_structure(EDEVICE_STRUCTURE, cursor)
+        # view_name = "v_edevice_flat"
+        # edevice_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{edevice_sql}\n")
+        # create_view_in_db(conn, view_name, edevice_sql)
+        # comment_view_in_db(conn, view_name)
+        # # arrest
+        # filtered_structure = filter_structure(EARREST_STRUCTURE, cursor)
+        # view_name = "v_earrest_flat"
+        # earrest_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{earrest_sql}\n")
+        # create_view_in_db(conn, view_name, earrest_sql)
+        # comment_view_in_db(conn, view_name)
+        # # dispatch
+        # filtered_structure = filter_structure(EDISPATCH_STRUCTURE, cursor)
+        # view_name = "v_edispatch_flat"
+        # edispatch_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{edispatch_sql}\n")
+        # create_view_in_db(conn, view_name, edispatch_sql)
+        # comment_view_in_db(conn, view_name)
+        # # disposition
+        # filtered_structure = filter_structure(EDISPOSITION_STRUCTURE, cursor)
+        # view_name = "v_edisposition_flat"
+        # edisposition_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{edisposition_sql}\n")
+        # create_view_in_db(conn, view_name, edisposition_sql)
+        # comment_view_in_db(conn, view_name)
+        # # exam
+        # filtered_structure = filter_structure(EEXAM_STRUCTURE, cursor)
+        # view_name = "v_eexam_flat"
+        # eexam_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eexam_sql}\n")
+        # create_view_in_db(conn, view_name, eexam_sql)
+        # comment_view_in_db(conn, view_name)
+        # # history
+        # filtered_structure = filter_structure(EHISTORY_STRUCTURE, cursor)
+        # view_name = "v_ehistory_flat"
+        # ehistory_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{ehistory_sql}\n")
+        # create_view_in_db(conn, view_name, ehistory_sql)
+        # comment_view_in_db(conn, view_name)
+        # # injury
+        # filtered_structure = filter_structure(EINJURY_STRUCTURE, cursor)
+        # view_name = "v_einjury_flat"
+        # einjury_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{einjury_sql}\n")
+        # create_view_in_db(conn, view_name, einjury_sql)
+        # comment_view_in_db(conn, view_name)
+        # # lab
+        # filtered_structure = filter_structure(ELABS_STRUCTURE, cursor)
+        # view_name = "v_elabs_flat"
+        # elabs_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{elabs_sql}\n")
+        # create_view_in_db(conn, view_name, elabs_sql)
+        # comment_view_in_db(conn, view_name)
+        # # medications
+        # filtered_structure = filter_structure(EMEDICATIONS_STRUCTURE, cursor)
+        # view_name = "v_emedications_flat"
+        # emedications_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{emedications_sql}\n")
+        # create_view_in_db(conn, view_name, emedications_sql)
+        # comment_view_in_db(conn, view_name)
+        # # other
+        # filtered_structure = filter_structure(EOTHER_STRUCTURE, cursor)
+        # view_name = "v_eother_flat"
+        # eother_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eother_sql}\n")
+        # create_view_in_db(conn, view_name, eother_sql)
+        # comment_view_in_db(conn, view_name)
+        # # outcome
+        # filtered_structure = filter_structure(EOUTCOME_STRUCTURE, cursor)
+        # view_name = "v_eoutcome_flat"
+        # eoutcome_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eoutcome_sql}\n")
+        # create_view_in_db(conn, view_name, eoutcome_sql)
+        # comment_view_in_db(conn, view_name)
+        # # patient
+        # filtered_structure = filter_structure(EPATIENT_STRUCTURE, cursor)
+        # view_name = "v_epatient_flat"
+        # epatient_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{epatient_sql}\n")
+        # create_view_in_db(conn, view_name, epatient_sql)
+        # comment_view_in_db(conn, view_name)
+        # # payment
+        # filtered_structure = filter_structure(EPAYMENT_STRUCTURE, cursor)
+        # view_name = "v_epayment_flat"
+        # epayment_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{epayment_sql}\n")
+        # create_view_in_db(conn, view_name, epayment_sql)
+        # comment_view_in_db(conn, view_name)
+        # # protocols
+        # filtered_structure = filter_structure(EPROTOCOLS_STRUCTURE, cursor)
+        # view_name = "v_eprotocols_flat"
+        # eprotocols_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eprotocols_sql}\n")
+        # create_view_in_db(conn, view_name, eprotocols_sql)
+        # comment_view_in_db(conn, view_name)
+        # # record
+        # filtered_structure = filter_structure(ERECORD_STRUCTURE, cursor)
+        # view_name = "v_erecord_flat"
+        # erecord_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{erecord_sql}\n")
+        # create_view_in_db(conn, view_name, erecord_sql)
+        # comment_view_in_db(conn, view_name)
+        # # response
+        # filtered_structure = filter_structure(ERESPONSE_STRUCTURE, cursor)
+        # view_name = "v_eresponse_flat"
+        # eresponse_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{eresponse_sql}\n")
+        # create_view_in_db(conn, view_name, eresponse_sql)
+        # comment_view_in_db(conn, view_name)
+        # # scene
+        # filtered_structure = filter_structure(ESCENE_STRUCTURE, cursor)
+        # view_name = "v_escene_flat"
+        # escene_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{escene_sql}\n")
+        # create_view_in_db(conn, view_name, escene_sql)
+        # comment_view_in_db(conn, view_name)
+        # # situation
+        # filtered_structure = filter_structure(ESITUATION_STRUCTURE, cursor)
+        # view_name = "v_esituation_flat"
+        # esituation_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{esituation_sql}\n")
+        # create_view_in_db(conn, view_name, esituation_sql)
+        # comment_view_in_db(conn, view_name)
+        # # times
+        # filtered_structure = filter_structure(ETIMES_STRUCTURE, cursor)
+        # view_name = "v_etimes_flat"
+        # etimes_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{etimes_sql}\n")
+        # create_view_in_db(conn, view_name, etimes_sql)
+        # comment_view_in_db(conn, view_name)
+        # # custom configuration
+        # filtered_structure = filter_structure(ECUSTOMCONFIGURATION_STRUCTURE, cursor)
+        # view_name = "v_ecustomconfiguration_flat"
+        # ecustomconfiguration_sql = generate_view_sql(
+        #     view_name, filtered_structure, cursor
+        # )
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{ecustomconfiguration_sql}\n")
+        # create_view_in_db(conn, view_name, ecustomconfiguration_sql)
+        # comment_view_in_db(conn, view_name)
+        #
+        # # custom results
+        # filtered_structure = filter_structure(ECUSTOMRESULTS_STRUCTURE, cursor)
+        # view_name = "v_ecustomresults_flat"
+        # ecustomresults_sql = generate_view_sql(view_name, filtered_structure, cursor)
+        # if "--verbose" in sys.argv:
+        #     print(f"\nGenerated SQL for {view_name}:\n{ecustomresults_sql}\n")
+        # create_view_in_db(conn, view_name, ecustomresults_sql)
+        # comment_view_in_db(conn, view_name)
 
-        # custom results
-        filtered_structure = filter_structure(ECUSTOMRESULTS_STRUCTURE, cursor)
-        view_name = "v_ecustomresults_flat"
-        ecustomresults_sql = generate_view_sql(view_name, filtered_structure, cursor)
-        if "--verbose" in sys.argv:
-            print(f"\nGenerated SQL for {view_name}:\n{ecustomresults_sql}\n")
-        create_view_in_db(conn, view_name, ecustomresults_sql)
-        comment_view_in_db(conn, view_name)
-
+        print("View creation for v_*_flat views has been disabled in this script.")
+        print("Running setup_element_definitions...")
         setup_element_definitions(conn)
 
         conn.close()

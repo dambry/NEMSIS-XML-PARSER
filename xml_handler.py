@@ -20,7 +20,7 @@ def _sanitize_name(name):
 
 
 def _traverse_element_recursive(
-    element, parent_element_id, current_pcr_uuid, element_path_parts, processed_elements
+    element, parent_element_id, current_pcr_uuid, element_path_parts, processed_elements, parent_table_suggestion_for_child
 ):
     """Recursively traverses XML elements and collects their data."""
     element_id = str(uuid.uuid4())  # Unique ID for this element instance
@@ -66,12 +66,13 @@ def _traverse_element_recursive(
         "attributes": attributes,  # Attributes are also sanitized (keys)
         "text_content": element.text.strip() if element.text else None,
         "pcr_uuid_context": current_pcr_uuid,
+        "parent_table_suggestion": parent_table_suggestion_for_child,
     }
     processed_elements.append(element_data)
 
     for child in element:
         _traverse_element_recursive(
-            child, element_id, current_pcr_uuid, current_path_parts, processed_elements
+            child, element_id, current_pcr_uuid, current_path_parts, processed_elements, element_data["table_suggestion"]
         )
 
 
@@ -96,7 +97,7 @@ def parse_xml_file(file_path):
         print(f"Error: XML file not found at {file_path}")
         return []
 
-    _traverse_element_recursive(root, None, None, [], processed_elements)
+    _traverse_element_recursive(root, None, None, [], processed_elements, None)
 
     return processed_elements
 

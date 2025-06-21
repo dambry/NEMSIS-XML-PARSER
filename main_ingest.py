@@ -286,6 +286,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
         return False
 
     elements_data = parse_xml_file(xml_file_path)
+    foreign_key_definitions = [] # Initialize list for FKs
 
     if not elements_data:
         print(f"No elements parsed from {xml_file_path} or parsing error occurred.")
@@ -327,7 +328,12 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 "No PatientCareReport UUIDs found in this file; no pre-deletion of data will occur."
             )
 
+        current_file_foreign_keys = set() # Using a set to store tuples for uniqueness
+
         for element in elements_data:
+            # Retrieve parent_table_suggestion from the element
+            parent_table_suggestion_raw = element.get("parent_table_suggestion")
+
             table_name_raw, actual_table_columns = ensure_table_and_columns(
                 db_conn,
                 element["table_suggestion"],
@@ -342,6 +348,17 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 raise psycopg2.Error(
                     f"Failed to ensure table/columns for {table_name_raw}"
                 )  # Trigger rollback
+
+            # Logic for preparing foreign key definition
+            if parent_table_suggestion_raw and element.get("parent_element_id"):
+                # Ensure parent_table_suggestion is sanitized and lowercased, similar to child table names
+                sanitized_parent_table_name = sanitize_xml_name(parent_table_suggestion_raw)
+                if sanitized_parent_table_name: # Ensure it's not empty after sanitization
+                    # Add to set as a tuple: (child_table_raw, parent_table_raw_sanitized)
+                    # table_name_raw is already sanitized from ensure_table_and_columns
+                    current_file_foreign_keys.add(
+                        (table_name_raw, sanitized_parent_table_name)
+                    )
 
             # Prepare data for insertion
             insert_data = {
@@ -373,8 +390,51 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 print(f"DB Insert Error: {e} SQL: {sql} VALS:{values}")
                 raise  # Reraise to trigger transaction rollback
 
-        db_conn.commit()  # Commit transaction if all elements processed successfully
-        print(f"All elements from {xml_file_path} successfully ingested and committed.")
+        # After processing all elements, attempt to create foreign key constraints
+        if current_file_foreign_keys:
+            print(f"Attempting to create {len(current_file_foreign_keys)} unique foreign key constraints for {xml_file_path}...")
+            for child_table_raw, parent_table_raw_sanitized in current_file_foreign_keys:
+                child_table_name_lowercase = child_table_raw.lower()
+                parent_table_name_lowercase = parent_table_raw_sanitized.lower()
+
+                # Construct constraint name carefully to avoid excessive length and ensure uniqueness
+                constraint_name_raw = f"fk_{child_table_raw}_{parent_table_raw_sanitized}"
+                # Sanitize and shorten if necessary, though sanitize_xml_name might be too aggressive here
+                # For now, direct quoting, ensure it's valid. Max identifier length in PG is 63.
+                constraint_name = f"\"{constraint_name_raw[:55]}\"" # Truncate and quote
+
+                alter_sql = f"""
+                    ALTER TABLE "{child_table_name_lowercase}"
+                    ADD CONSTRAINT {constraint_name}
+                    FOREIGN KEY ("parent_element_id")
+                    REFERENCES "{parent_table_name_lowercase}" ("element_id")
+                    ON DELETE CASCADE;
+                """
+                try:
+                    cursor.execute(alter_sql)
+                    print(f"Successfully created FK: {child_table_name_lowercase} -> {parent_table_name_lowercase} ({constraint_name})")
+                except psycopg2.Error as e:
+                    # Check if the constraint already exists (common if reprocessing)
+                    if "constraint" in str(e).lower() and "already exists" in str(e).lower():
+                        print(f"FK constraint {constraint_name} on {child_table_name_lowercase} likely already exists: {e}")
+                    # Check if the referenced table or column doesn't exist
+                    elif "relation" in str(e).lower() and "does not exist" in str(e).lower():
+                         print(f"Error creating FK {constraint_name} on {child_table_name_lowercase}: Referenced table/column does not exist. {e}")
+                         # This indicates a more serious issue, potentially with table creation logic.
+                         # Depending on desired strictness, could raise error here.
+                    elif "column" in str(e).lower() and "does not exist" in str(e).lower():
+                         print(f"Error creating FK {constraint_name} on {child_table_name_lowercase}: Referenced column does not exist. {e}")
+                    else:
+                        print(f"Error creating FK {constraint_name} on {child_table_name_lowercase} to {parent_table_name_lowercase}: {e}")
+                        print(f"SQL: {alter_sql.strip()}")
+                        # Decide if this should halt the entire file's success or just log as warning
+                        # For now, let's make it critical enough to trigger a rollback of this file's transaction
+                        raise psycopg2.Error(f"FK Creation Failed for {constraint_name}")
+            print("Foreign key constraint creation phase completed.")
+
+
+        db_conn.commit()  # Commit transaction if all elements and FKs processed successfully
+        print(f"All elements and FKs from {xml_file_path} successfully ingested and committed.")
         log_processed_file(
             db_conn,
             processed_file_id,
