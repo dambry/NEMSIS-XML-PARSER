@@ -395,6 +395,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
 
         print("--- Successfully completed data insertion loop. Proceeding to Foreign Key creation. ---")
         # After processing all elements, attempt to create foreign key constraints
+        critical_fk_error_occurred = False # Initialize flag
         if current_file_foreign_keys:
             print(f"Attempting to create {len(current_file_foreign_keys)} unique foreign key constraints for {xml_file_path}...")
             for child_table_raw, parent_table_raw_sanitized in current_file_foreign_keys:
@@ -476,9 +477,15 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                     print(f"SQL: {alter_sql.strip()}")
                     print(f"Error Details: {e}")
                     # Re-raise the exception to trigger the outer transaction rollback for the entire file.
-                    raise
+                    # MODIFICATION: Instead of re-raising, log and set a flag.
+                    # raise
+                    critical_fk_error_occurred = True # Set flag here
             print("Foreign key constraint creation phase completed.")
 
+        if critical_fk_error_occurred:
+            # If any critical FK error happened, we should not commit.
+            # Raise an exception to trigger the rollback in the calling try-except block.
+            raise Exception(f"One or more critical errors occurred during foreign key creation for {xml_file_path}. Transaction will be rolled back.")
 
         db_conn.commit()  # Commit transaction if all elements and FKs processed successfully
         print(f"All elements and FKs from {xml_file_path} successfully ingested and committed.")
