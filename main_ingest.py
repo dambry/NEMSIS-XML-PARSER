@@ -1,5 +1,6 @@
 import psycopg2
 import psycopg2.extras
+from psycopg2 import errors as psycopg2_errors # Import for specific error codes
 import uuid
 import datetime
 import os
@@ -397,39 +398,82 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 child_table_name_lowercase = child_table_raw.lower()
                 parent_table_name_lowercase = parent_table_raw_sanitized.lower()
 
-                # Construct constraint name carefully to avoid excessive length and ensure uniqueness
-                constraint_name_raw = f"fk_{child_table_raw}_{parent_table_raw_sanitized}"
-                # Sanitize and shorten if necessary, though sanitize_xml_name might be too aggressive here
-                # For now, direct quoting, ensure it's valid. Max identifier length in PG is 63.
-                constraint_name = f"\"{constraint_name_raw[:55]}\"" # Truncate and quote
+                ideal_constraint_name = f"fk_{child_table_raw}_{parent_table_raw_sanitized}"
+                fk_constraint_name_unquoted = ""
+
+                if len(ideal_constraint_name) <= 63:
+                    fk_constraint_name_unquoted = ideal_constraint_name
+                else:
+                    hash_suffix = hashlib.md5(ideal_constraint_name.encode()).hexdigest()[:6]
+                    prefix = "fk_"
+                    len_prefix = len(prefix)
+                    len_hash = len(hash_suffix)
+                    len_separator_before_hash = 1 # for the _ before the hash
+
+                    # Max length for the combined "childpart_parentpart" string
+                    max_len_for_tables_part = 63 - len_prefix - len_hash - len_separator_before_hash
+
+                    child_part = child_table_raw
+                    parent_part = parent_table_raw_sanitized
+
+                    # Available length for "childpart_parentpart" (child + parent + 1 underscore)
+                    available_for_names_plus_underscore = max_len_for_tables_part
+
+                    # If current combined length (child + _ + parent) is too long
+                    if (len(child_part) + 1 + len(parent_part)) > available_for_names_plus_underscore:
+                        # Max length for each name part, aiming for roughly equal truncation
+                        # -1 for the underscore separating child and parent parts
+                        available_for_child_and_parent_only = available_for_names_plus_underscore - 1
+
+                        # Attempt to allocate space, giving more to longer names if possible,
+                        # but simple equal split first.
+                        max_len_child_part = available_for_child_and_parent_only // 2
+                        max_len_parent_part = available_for_child_and_parent_only - max_len_child_part
+
+                        if len(child_part) > max_len_child_part:
+                            child_part = child_part[:max_len_child_part]
+                            # Recalculate max_len_parent_part based on actual truncated child_part length
+                            max_len_parent_part = available_for_child_and_parent_only - len(child_part)
+
+                        if len(parent_part) > max_len_parent_part:
+                            parent_part = parent_part[:max_len_parent_part]
+
+                        # Final check if parent_part truncation made child_part too long again (if parent was very short initially)
+                        if (len(child_part) + 1 + len(parent_part)) > available_for_names_plus_underscore:
+                             child_part = child_part[:available_for_child_and_parent_only - len(parent_part) -1]
+
+
+                    fk_constraint_name_unquoted = f"{prefix}{child_part}_{parent_part}_{hash_suffix}"
+
+                    # Absolute final truncation if logic somehow failed (should be rare)
+                    if len(fk_constraint_name_unquoted) > 63:
+                        fk_constraint_name_unquoted = fk_constraint_name_unquoted[:63]
+
+                fk_constraint_name_quoted = f'"{fk_constraint_name_unquoted}"'
 
                 alter_sql = f"""
                     ALTER TABLE "{child_table_name_lowercase}"
-                    ADD CONSTRAINT {constraint_name}
+                    ADD CONSTRAINT {fk_constraint_name_quoted}
                     FOREIGN KEY ("parent_element_id")
                     REFERENCES "{parent_table_name_lowercase}" ("element_id")
                     ON DELETE CASCADE;
                 """
+                print(f"Attempting to execute FK DDL: {alter_sql.strip()}") # Log DDL attempt
                 try:
                     cursor.execute(alter_sql)
-                    print(f"Successfully created FK: {child_table_name_lowercase} -> {parent_table_name_lowercase} ({constraint_name})")
+                    print(f"Successfully created FK: {child_table_name_lowercase} -> {parent_table_name_lowercase} ({fk_constraint_name_quoted})")
+                except psycopg2_errors.DuplicateObject as e: # Typically error code 42710
+                    # This means the constraint name (or possibly the constraint definition itself) already exists.
+                    # This is common if reprocessing a file or if multiple identical FK relationships are defined.
+                    print(f"Warning: FK constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase} likely already exists or is a duplicate definition. Details: {e}")
+                    # Continue to the next FK definition.
                 except psycopg2.Error as e:
-                    # Check if the constraint already exists (common if reprocessing)
-                    if "constraint" in str(e).lower() and "already exists" in str(e).lower():
-                        print(f"FK constraint {constraint_name} on {child_table_name_lowercase} likely already exists: {e}")
-                    # Check if the referenced table or column doesn't exist
-                    elif "relation" in str(e).lower() and "does not exist" in str(e).lower():
-                         print(f"Error creating FK {constraint_name} on {child_table_name_lowercase}: Referenced table/column does not exist. {e}")
-                         # This indicates a more serious issue, potentially with table creation logic.
-                         # Depending on desired strictness, could raise error here.
-                    elif "column" in str(e).lower() and "does not exist" in str(e).lower():
-                         print(f"Error creating FK {constraint_name} on {child_table_name_lowercase}: Referenced column does not exist. {e}")
-                    else:
-                        print(f"Error creating FK {constraint_name} on {child_table_name_lowercase} to {parent_table_name_lowercase}: {e}")
-                        print(f"SQL: {alter_sql.strip()}")
-                        # Decide if this should halt the entire file's success or just log as warning
-                        # For now, let's make it critical enough to trigger a rollback of this file's transaction
-                        raise psycopg2.Error(f"FK Creation Failed for {constraint_name}")
+                    # For any other psycopg2.Error, it's unexpected and potentially critical.
+                    print(f"Critical Error creating FK {fk_constraint_name_quoted} on {child_table_name_lowercase} referencing {parent_table_name_lowercase}.")
+                    print(f"SQL: {alter_sql.strip()}")
+                    print(f"Error Details: {e}")
+                    # Re-raise the exception to trigger the outer transaction rollback for the entire file.
+                    raise
             print("Foreign key constraint creation phase completed.")
 
 
