@@ -455,40 +455,46 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
 
                 fk_constraint_name_quoted = f'"{fk_constraint_name_unquoted}"'
 
-                alter_sql = f"""
-                    ALTER TABLE "{child_table_name_lowercase}"
-                    ADD CONSTRAINT {fk_constraint_name_quoted}
-                    FOREIGN KEY ("parent_element_id")
-                    REFERENCES "{parent_table_name_lowercase}" ("element_id")
-                    ON DELETE CASCADE;
-                """
-                print(f"Attempting to execute FK DDL: {alter_sql.strip()}") # Log DDL attempt
                 try:
-                    cursor.execute(alter_sql)
-                    print(f"Successfully created FK: {child_table_name_lowercase} -> {parent_table_name_lowercase} ({fk_constraint_name_quoted})")
-                except psycopg2_errors.DuplicateObject as e: # Typically error code 42710
-                    # This means the constraint name (or possibly the constraint definition itself) already exists.
-                    # This is common if reprocessing a file or if multiple identical FK relationships are defined.
-                    print(f"Warning: FK constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase} likely already exists or is a duplicate definition. Details: {e}")
+                    # Check if constraint already exists
+                    check_fk_sql = (
+                        "SELECT constraint_name "
+                        "FROM information_schema.table_constraints "
+                        "WHERE table_schema = 'public' "
+                        "  AND table_name = %s "
+                        "  AND constraint_name = %s;"
+                    )
+                    cursor.execute(check_fk_sql, (child_table_name_lowercase, fk_constraint_name_unquoted))
+                    existing_fk = cursor.fetchone()
 
-                    print(f"--- Running diagnostic SELECT 1 after DuplicateObject for {fk_constraint_name_quoted} ---")
-                    try:
-                        # Ensure cursor is available; it should be from the outer scope
-                        cursor.execute("SELECT 1;")
-                        # If you fetch results, it's an even stronger test, but execute alone is often enough.
-                        # test_result = cursor.fetchone()
-                        print(f"--- Diagnostic SELECT 1 executed successfully after DuplicateObject for {fk_constraint_name_quoted}. Transaction might still be usable. ---")
-                    except psycopg2.Error as diag_e:
-                        print(f"--- CRITICAL DIAGNOSTIC: Diagnostic SELECT 1 FAILED for {fk_constraint_name_quoted} after DuplicateObject. Transaction IS LIKELY ABORTED. Error: {diag_e} ---")
-                    print(f"--- End of diagnostic for {fk_constraint_name_quoted} ---")
-                    # Continue to the next FK definition.
+                    if existing_fk is None:
+                        # Define alter_sql only if we need to create the constraint
+                        alter_sql = f"""
+                            ALTER TABLE "{child_table_name_lowercase}"
+                            ADD CONSTRAINT {fk_constraint_name_quoted}
+                            FOREIGN KEY ("parent_element_id")
+                            REFERENCES "{parent_table_name_lowercase}" ("element_id")
+                            ON DELETE CASCADE;
+                        """
+                        print(f"Attempting to execute FK DDL: {alter_sql.strip()}")
+                        cursor.execute(alter_sql)
+                        print(f"Successfully created FK: {fk_constraint_name_quoted} on table {child_table_name_lowercase} referencing {parent_table_name_lowercase}")
+                    else:
+                        print(f"Warning: FK constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase} already exists according to information_schema. Skipping creation.")
+
                 except psycopg2.Error as e:
-                    # For any other psycopg2.Error, it's unexpected and potentially critical.
-                    print(f"Critical Error creating FK {fk_constraint_name_quoted} on {child_table_name_lowercase} referencing {parent_table_name_lowercase}.")
-                    print(f"SQL: {alter_sql.strip()}")
+                    # Catch errors from either the SELECT or the ALTER TABLE
+                    # If alter_sql was defined, include it in the error message
+                    current_sql_attempt = "N/A"
+                    if 'alter_sql' in locals() and existing_fk is None: # only if ALTER was attempted
+                        current_sql_attempt = alter_sql.strip()
+                    elif 'check_fk_sql' in locals(): # if error was in the check
+                        current_sql_attempt = check_fk_sql.strip()
+
+                    print(f"Critical Error during FK operation for constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase}.")
+                    print(f"Attempted SQL (or check query): {current_sql_attempt}")
                     print(f"Error Details: {e}")
-                    # Re-raise the exception to trigger the outer transaction rollback for the entire file.
-                    raise
+                    raise # Re-raise to trigger transaction rollback for the file
             print("Foreign key constraint creation phase completed.")
 
 
