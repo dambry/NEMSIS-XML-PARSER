@@ -10,4 +10,3 @@ python-dotenv>=1.0.0
 # For FastAPI 0.100+ with Pydantic v2, the above is fine.
 # If older FastAPI or specific Pydantic v1 was intended by existing code:
 # pydantic>=1.10.0,<2.0.0
-tqdm>=4.62.3 # For progress bar

@@ -14,7 +14,7 @@ Tables are named based on the XML tags from the NEMSIS data. The naming conventi
 2.  **Case**: Table names are generally stored in lowercase.
 
 For example:
-*   An XML tag like `<eVitals.VitalGroup>` would correspond to a table named `evitals_vitalgroup`.
+*   An XML tag like `<eVitals.VitalGroup>` would likely correspond to a table named `evitals_vitalgroup`.
 *   A tag `<eDisposition.01>` would correspond to `edisposition_01`.
 
 You can inspect the available tables in your database using `psql`'s `\dt` command or by querying `information_schema.tables`.
