@@ -12,6 +12,7 @@ PG_PORT = os.getenv("PG_PORT", "5432")
 PG_DATABASE = os.getenv("PG_DATABASE")  # No default, should be set
 PG_USER = os.getenv("PG_USER")  # No default, should be set
 PG_PASSWORD = os.getenv("PG_PASSWORD")  # No default, should be set
+PG_SCHEMA = os.getenv("PG_SCHEMA", "public")  # Default to 'public' schema
 
 # Check if critical PostgreSQL environment variables are set
 if not all([PG_DATABASE, PG_USER, PG_PASSWORD]):
