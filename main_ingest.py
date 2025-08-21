@@ -1,5 +1,7 @@
+import sys
 import psycopg2
 import psycopg2.extras
+from psycopg2 import errors as psycopg2_errors  # Import for specific error codes
 import uuid
 import datetime
 import os
@@ -10,7 +12,7 @@ import re  # For more advanced sanitization if needed
 
 # Project-specific imports
 try:
-    from config import PG_HOST, PG_PORT, PG_DATABASE, PG_USER, PG_PASSWORD
+    from config import PG_SCHEMA
     from database_setup import get_db_connection  # Expects database_setup to be updated
     from xml_handler import (
         parse_xml_file,
@@ -24,6 +26,7 @@ except ImportError as e:
     exit(1)
 
 ARCHIVE_DIR = "processed_xml_archive"
+ERROR_DIR = "error_files"
 # Schema version for the ingestion LOGIC, not the data schema itself which is now dynamic
 INGESTION_LOGIC_VERSION_NUMBER = "1.0.0-dynamic-ingestor-v4"
 
@@ -51,7 +54,7 @@ def get_ingestion_logic_schema_id(conn, version_number):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cursor:
             cursor.execute(
-                "SELECT SchemaVersionID FROM SchemaVersions WHERE VersionNumber = %s",
+                f'SELECT SchemaVersionID FROM "{PG_SCHEMA}".SchemaVersions WHERE VersionNumber = %s',
                 (version_number,),
             )
             result = cursor.fetchone()
@@ -73,7 +76,7 @@ def log_processed_file(
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO XMLFilesProcessed (ProcessedFileID, OriginalFileName, MD5Hash, ProcessingTimestamp, Status, SchemaVersionID, DemographicGroup) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                f'INSERT INTO "{PG_SCHEMA}".XMLFilesProcessed (ProcessedFileID, OriginalFileName, MD5Hash, ProcessingTimestamp, Status, SchemaVersionID, DemographicGroup) VALUES (%s, %s, %s, %s, %s, %s, %s)',
                 (
                     processed_file_id,
                     original_file_name,
@@ -113,6 +116,29 @@ def archive_file(file_path, archive_directory):
         return False
 
 
+def move_to_error_directory(file_path, error_directory=ERROR_DIR):
+    """Moves a file to the error directory when processing fails."""
+    if not os.path.exists(file_path):
+        return False
+    try:
+        if not os.path.exists(error_directory):
+            os.makedirs(error_directory)
+        base_filename = os.path.basename(file_path)
+        error_path = os.path.join(error_directory, base_filename)
+        if os.path.exists(error_path):
+            # Add timestamp to make filename unique
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            name, ext = os.path.splitext(base_filename)
+            base_filename = f"{name}_error_{timestamp}{ext}"
+            error_path = os.path.join(error_directory, base_filename)
+        shutil.move(file_path, error_path)
+        print(f"File {file_path} moved to error directory: {error_path}")
+        return True
+    except Exception as e:
+        print(f"Error moving file {file_path} to error directory: {e}")
+        return False
+
+
 # --- Dynamic Schema and Data Insertion Functions ---
 
 _table_column_cache = {}  # Cache for table schemas: {table_name: {column_names}}
@@ -128,8 +154,8 @@ def get_table_columns(conn, table_name):
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s",
-                (safe_table_name.lower(),),
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s",
+                (PG_SCHEMA, safe_table_name.lower()),
             )
             cols = {row[0] for row in cursor.fetchall()}
             _table_column_cache[safe_table_name] = cols
@@ -172,14 +198,18 @@ def ensure_table_and_columns(
                 current_common_names.add(sanitized_attr)
 
         final_cols_for_create = common_cols_sql + list(set(attr_cols_for_create))
-        create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(final_cols_for_create)});"
+        columns_sql = ", ".join(final_cols_for_create)
+        create_sql = (
+            f'CREATE TABLE IF NOT EXISTS "{PG_SCHEMA}".{table_name} ({columns_sql});'
+        )
         try:
             cursor.execute(create_sql)
             # Set table comment to element_path (from the first element)
             if "element_path" in element_attributes:
                 element_path_str = element_attributes["element_path"]
                 cursor.execute(
-                    f"COMMENT ON TABLE {table_name} IS %s;", (element_path_str,)
+                    f'COMMENT ON TABLE "{PG_SCHEMA}".{table_name} IS %s;',
+                    (element_path_str,),
                 )
             created_cols = {
                 col_def.split()[0].strip('"').lower()
@@ -205,7 +235,7 @@ def ensure_table_and_columns(
         col_name_quoted = f'"{col_name}"'
         try:
             cursor.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN {col_name_quoted} TEXT;"
+                f'ALTER TABLE "{PG_SCHEMA}".{table_name} ADD COLUMN {col_name_quoted} TEXT;'
             )
             print(f"Added column {col_name_quoted} to {table_name}")
             _table_column_cache[table_name_raw].add(col_name)
@@ -229,16 +259,18 @@ def delete_existing_pcr_data(conn, pcr_uuid):
             cursor.execute(
                 """
                 SELECT table_name FROM information_schema.tables 
-                WHERE table_schema = 'public' AND table_name NOT LIKE 'pg_%%' 
+                WHERE table_schema = %s AND table_type = 'BASE TABLE'
+                AND table_name NOT LIKE 'pg_%%'
                 AND table_name NOT IN ('SchemaVersions', 'XMLFilesProcessed')
-            """
+            """,
+                (PG_SCHEMA,),
             )
             tables_to_check = [row[0] for row in cursor.fetchall()]
 
             for table_name_raw in tables_to_check:
                 columns = get_table_columns(conn, table_name_raw)
                 if "pcr_uuid_context" in columns:
-                    table_name_quoted = f'"{table_name_raw}"'
+                    table_name_quoted = f'"{PG_SCHEMA}"."{table_name_raw}"'
                     try:
                         cursor.execute(
                             f'DELETE FROM {table_name_quoted} WHERE "pcr_uuid_context" = %s',
@@ -251,10 +283,12 @@ def delete_existing_pcr_data(conn, pcr_uuid):
                             )
                     except psycopg2.Error as e:
                         print(f"Error deleting from {table_name_quoted}: {e}")
+                        raise  # Re-raise the exception
         if deleted_total > 0:
             print(f"Total rows deleted for PCR {pcr_uuid}: {deleted_total}")
     except psycopg2.Error as e:
         print(f"DB error during PCR deletion: {e}")
+        raise  # Re-raise the exception
 
 
 def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
@@ -272,6 +306,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             "Error_MD5",
             ingestion_schema_id,
         )
+        move_to_error_directory(xml_file_path)
         return False
     if not os.path.exists(xml_file_path):
         print(f"Error: XML file not found at {xml_file_path}. Aborting.")
@@ -283,6 +318,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             "Error_FileNotFound",
             ingestion_schema_id,
         )
+        # File doesn't exist, so no need to move it
         return False
 
     elements_data = parse_xml_file(xml_file_path)
@@ -297,6 +333,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             "Error_Parsing_Empty",
             ingestion_schema_id,
         )
+        move_to_error_directory(xml_file_path)
         return False
 
     # Collect all unique PCR UUIDs from the current file
@@ -327,7 +364,12 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 "No PatientCareReport UUIDs found in this file; no pre-deletion of data will occur."
             )
 
+        current_file_foreign_keys = set()  # Using a set to store tuples for uniqueness
+
         for element in elements_data:
+            # Retrieve parent_table_suggestion from the element
+            parent_table_suggestion_raw = element.get("parent_table_suggestion")
+
             table_name_raw, actual_table_columns = ensure_table_and_columns(
                 db_conn,
                 element["table_suggestion"],
@@ -342,6 +384,21 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 raise psycopg2.Error(
                     f"Failed to ensure table/columns for {table_name_raw}"
                 )  # Trigger rollback
+
+            # Logic for preparing foreign key definition
+            if parent_table_suggestion_raw and element.get("parent_element_id"):
+                # Ensure parent_table_suggestion is sanitized and lowercased, similar to child table names
+                sanitized_parent_table_name = sanitize_xml_name(
+                    parent_table_suggestion_raw
+                )
+                if (
+                    sanitized_parent_table_name
+                ):  # Ensure it's not empty after sanitization
+                    # Add to set as a tuple: (child_table_raw, parent_table_raw_sanitized)
+                    # table_name_raw is already sanitized from ensure_table_and_columns
+                    current_file_foreign_keys.add(
+                        (table_name_raw, sanitized_parent_table_name)
+                    )
 
             # Prepare data for insertion
             insert_data = {
@@ -365,7 +422,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             placeholders = ", ".join(["%s"] * len(filtered_insert_data))
             values = tuple(filtered_insert_data.values())
 
-            table_name_quoted = f'"{table_name_raw.lower()}"'
+            table_name_quoted = f'"{PG_SCHEMA}"."{table_name_raw.lower()}"'
             sql = f"INSERT INTO {table_name_quoted} ({cols_for_sql}) VALUES ({placeholders})"
             try:
                 cursor.execute(sql, values)
@@ -373,8 +430,157 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 print(f"DB Insert Error: {e} SQL: {sql} VALS:{values}")
                 raise  # Reraise to trigger transaction rollback
 
-        db_conn.commit()  # Commit transaction if all elements processed successfully
-        print(f"All elements from {xml_file_path} successfully ingested and committed.")
+        print(
+            "--- Successfully completed data insertion loop. Proceeding to Foreign Key creation. ---"
+        )
+        # After processing all elements, attempt to create foreign key constraints
+        if current_file_foreign_keys:
+            print(
+                f"Attempting to create {len(current_file_foreign_keys)} unique foreign key constraints for {xml_file_path}..."
+            )
+            for (
+                child_table_raw,
+                parent_table_raw_sanitized,
+            ) in current_file_foreign_keys:
+                child_table_name_lowercase = child_table_raw.lower()
+                parent_table_name_lowercase = parent_table_raw_sanitized.lower()
+
+                ideal_constraint_name = (
+                    f"fk_{child_table_raw}_{parent_table_raw_sanitized}"
+                )
+                fk_constraint_name_unquoted = ""
+
+                if len(ideal_constraint_name) <= 63:
+                    fk_constraint_name_unquoted = ideal_constraint_name
+                else:
+                    hash_suffix = hashlib.md5(
+                        ideal_constraint_name.encode()
+                    ).hexdigest()[:6]
+                    prefix = "fk_"
+                    len_prefix = len(prefix)
+                    len_hash = len(hash_suffix)
+                    len_separator_before_hash = 1  # for the _ before the hash
+
+                    # Max length for the combined "childpart_parentpart" string
+                    max_len_for_tables_part = (
+                        63 - len_prefix - len_hash - len_separator_before_hash
+                    )
+
+                    child_part = child_table_raw
+                    parent_part = parent_table_raw_sanitized
+
+                    # Available length for "childpart_parentpart" (child + parent + 1 underscore)
+                    available_for_names_plus_underscore = max_len_for_tables_part
+
+                    # If current combined length (child + _ + parent) is too long
+                    if (
+                        len(child_part) + 1 + len(parent_part)
+                    ) > available_for_names_plus_underscore:
+                        # Max length for each name part, aiming for roughly equal truncation
+                        # -1 for the underscore separating child and parent parts
+                        available_for_child_and_parent_only = (
+                            available_for_names_plus_underscore - 1
+                        )
+
+                        # Attempt to allocate space, giving more to longer names if possible,
+                        # but simple equal split first.
+                        max_len_child_part = available_for_child_and_parent_only // 2
+                        max_len_parent_part = (
+                            available_for_child_and_parent_only - max_len_child_part
+                        )
+
+                        if len(child_part) > max_len_child_part:
+                            child_part = child_part[:max_len_child_part]
+                            # Recalculate max_len_parent_part based on actual truncated child_part length
+                            max_len_parent_part = (
+                                available_for_child_and_parent_only - len(child_part)
+                            )
+
+                        if len(parent_part) > max_len_parent_part:
+                            parent_part = parent_part[:max_len_parent_part]
+
+                        # Final check if parent_part truncation made child_part too long again (if parent was very short initially)
+                        if (
+                            len(child_part) + 1 + len(parent_part)
+                        ) > available_for_names_plus_underscore:
+                            child_part = child_part[
+                                : available_for_child_and_parent_only
+                                - len(parent_part)
+                                - 1
+                            ]
+
+                    fk_constraint_name_unquoted = (
+                        f"{prefix}{child_part}_{parent_part}_{hash_suffix}"
+                    )
+
+                    # Absolute final truncation if logic somehow failed (should be rare)
+                    if len(fk_constraint_name_unquoted) > 63:
+                        fk_constraint_name_unquoted = fk_constraint_name_unquoted[:63]
+
+                fk_constraint_name_quoted = f'"{fk_constraint_name_unquoted}"'
+
+                try:
+                    # Check if constraint already exists
+                    check_fk_sql = (
+                        "SELECT constraint_name "
+                        "FROM information_schema.table_constraints "
+                        "WHERE table_schema = %s "
+                        "  AND table_name = %s "
+                        "  AND constraint_name = %s;"
+                    )
+                    cursor.execute(
+                        check_fk_sql,
+                        (
+                            PG_SCHEMA,
+                            child_table_name_lowercase,
+                            fk_constraint_name_unquoted,
+                        ),
+                    )
+                    existing_fk = cursor.fetchone()
+
+                    if existing_fk is None:
+                        # Define alter_sql only if we need to create the constraint
+                        alter_sql = f"""
+                            ALTER TABLE "{PG_SCHEMA}"."{child_table_name_lowercase}"
+                            ADD CONSTRAINT {fk_constraint_name_quoted}
+                            FOREIGN KEY ("parent_element_id")
+                            REFERENCES "{PG_SCHEMA}"."{parent_table_name_lowercase}" ("element_id")
+                            ON DELETE CASCADE;
+                        """
+                        print(f"Attempting to execute FK DDL: {alter_sql.strip()}")
+                        cursor.execute(alter_sql)
+                        print(
+                            f"Successfully created FK: {fk_constraint_name_quoted} on table {child_table_name_lowercase} referencing {parent_table_name_lowercase}"
+                        )
+                    else:
+                        if "--verbose" in sys.argv:
+                            print(
+                                f"Warning: FK constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase} already exists according to information_schema. Skipping creation."
+                            )
+
+                except psycopg2.Error as e:
+                    # Catch errors from either the SELECT or the ALTER TABLE
+                    # If alter_sql was defined, include it in the error message
+                    current_sql_attempt = "N/A"
+                    if (
+                        "alter_sql" in locals() and existing_fk is None
+                    ):  # only if ALTER was attempted
+                        current_sql_attempt = alter_sql.strip()
+                    elif "check_fk_sql" in locals():  # if error was in the check
+                        current_sql_attempt = check_fk_sql.strip()
+
+                    print(
+                        f"Critical Error during FK operation for constraint {fk_constraint_name_quoted} on table {child_table_name_lowercase}."
+                    )
+                    print(f"Attempted SQL (or check query): {current_sql_attempt}")
+                    print(f"Error Details: {e}")
+                    raise  # Re-raise to trigger transaction rollback for the file
+            print("Foreign key constraint creation phase completed.")
+
+        db_conn.commit()  # Commit transaction if all elements and FKs processed successfully
+        print(
+            f"All elements and FKs from {xml_file_path} successfully ingested and committed."
+        )
         log_processed_file(
             db_conn,
             processed_file_id,
@@ -399,6 +605,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             "Error_Staging_Tx_PG_V4",
             ingestion_schema_id,
         )
+        move_to_error_directory(xml_file_path)
         return False
     except Exception as e:
         db_conn.rollback()
@@ -413,6 +620,7 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             "Error_Unexpected_PG_V4",
             ingestion_schema_id,
         )
+        move_to_error_directory(xml_file_path)
         return False
     finally:
         _table_column_cache.clear()  # Clear cache after processing each file
@@ -438,7 +646,7 @@ def main():
 
     print(f"--- NEMSIS Dynamic Data Ingestion V4 (PostgreSQL) --- ")
     print(
-        f"DB Target: {PG_DATABASE}@{PG_HOST}:{PG_PORT}, Archive: {ARCHIVE_DIR}, IngestionVersion: {target_ingestion_logic_version}"
+        f"Archive: {ARCHIVE_DIR}, ErrorDir: {ERROR_DIR}, Schema: {PG_SCHEMA}, IngestionVersion: {target_ingestion_logic_version}"
     )
 
     conn = None
