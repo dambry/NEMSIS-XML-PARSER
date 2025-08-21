@@ -1,8 +1,7 @@
-nemsis_xml/desktop.ini
-/processed_xml_archive
 .env
 scratch.py
 /__pycache__
 /nemsis_sql
 *.xml
 *.pyc
+nemsis_xml/desktop.ini
