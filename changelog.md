@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Each table now has semantic column names (e.g., `evitals_01_value`, `edisposition_02_value`)
   - Migration system ensures existing databases can be upgraded safely
   - Updated XML parser and ingestion logic to generate appropriate column names
+  - BREAKING: Queries, views, and reports that referenced `text_content` must be updated.
+    - Example:
+      - Before: `SELECT text_content FROM public.eVitals_01;`
+      - After:  `SELECT evitals_01_value FROM public.eVitals_01;`
+    - If you had indexes/constraints/triggers on `text_content`, re-create them on the new `*_value` column.
 - **Database Setup (`database_setup.py`)**:
   - Updated table creation to support custom schemas
   - Added schema creation functionality
