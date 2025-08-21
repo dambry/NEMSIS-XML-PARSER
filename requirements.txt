@@ -2,3 +2,5 @@ psycopg2-binary>=2.9.5
 requests>=2.30.0
 # Used by database_setup.py and others for `.env` loading
 python-dotenv>=1.0.0
+# Database migration tool
+alembic>=1.8.0
