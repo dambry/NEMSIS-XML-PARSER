@@ -72,11 +72,14 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
+    """
+    Run database migrations in "online" mode using a live DB connection.
+    
+    Creates an Engine from the alembic config (section prefixed with "sqlalchemy.", using a NullPool),
+    opens a connection, configures the Alembic context with that connection and the module's
+    target_metadata, and executes migrations inside a transaction. If a PG_SCHEMA value is
+    available from the application's config and is not "public", the schema is used for the
+    Alembic version table via `version_table_schema`.
     """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),

@@ -27,7 +27,32 @@ def _traverse_element_recursive(
     processed_elements,
     parent_table_suggestion_for_child,
 ):
-    """Recursively traverses XML elements and collects their data."""
+    """
+    Recursively traverse an XML element tree, collect contextual metadata for each element, and append a structured record to `processed_elements`.
+    
+    Each visited element produces a dictionary appended to `processed_elements` containing:
+    - element_id: UUID string unique to this element instance.
+    - parent_element_id: element_id of the parent or None for the root.
+    - element_tag: local tag name with any namespace URI removed.
+    - full_xmlns_tag: the original element.tag (may include namespace URI).
+    - table_suggestion: sanitized local tag name suitable as an SQL identifier.
+    - attributes: dict of element attributes with sanitized keys (namespace stripped).
+    - text_content: trimmed element text or None.
+    - value_column_name: generated name for a text-content column (``{sanitized_tag}_value``).
+    - pcr_uuid_context: PCR UUID carried from a parent PatientCareReport or discovered on this element.
+    - parent_table_suggestion: the table_suggestion value of this element's parent.
+    
+    Parameters:
+    - element: xml.etree.ElementTree.Element to process.
+    - parent_element_id: string UUID of the parent element or None for the root.
+    - current_pcr_uuid: PCR UUID (string) propagated from ancestor PatientCareReport elements; may be updated if this element is a PatientCareReport with a UUID attribute.
+    - element_path_parts: list of sanitized tag names representing the path from the root to this element.
+    - processed_elements: list to which this function appends the element metadata dictionaries (side effect).
+    - parent_table_suggestion_for_child: table suggestion (sanitized tag) of this element's parent; recorded for children.
+    
+    Side effects:
+    - Appends a metadata dictionary for each visited element to `processed_elements` and recursively processes all child elements.
+    """
     element_id = str(uuid.uuid4())  # Unique ID for this element instance
 
     raw_tag = element.tag
