@@ -64,8 +64,24 @@ def create_tables(conn, schema=PG_SCHEMA):
         # SchemaVersions Table for PostgreSQL
         cursor.execute(
             f"""
-        CREATE TABLE IF NOT EXISTS "{schema}".SchemaVersions (
-            SchemaVersionID SERIAL PRIMARY KEY, -- PostgreSQL auto-incrementing integer
+# At the top of database_setup.py, alongside the existing imports:
+import psycopg2  # Changed from sqlite3
+import psycopg2.extras  # For dictionary cursor
+import datetime
+import uuid  # For generating initial schema version if needed, or other UUIDs
+import re  # For schema name validation
+
+# … later in the file …
+
+def create_schema_if_not_exists(conn, schema_name):
+    """Creates the schema if it doesn't exist."""
+    # Validate schema name to prevent SQL injection
+    if not schema_name or not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', schema_name):
+        raise ValueError(f"Invalid schema name: {schema_name}")
+    if schema_name != "public":
+        with conn.cursor() as cursor:
+            cursor.execute(f'CREATE SCHEMA "{schema_name}"')
+        conn.commit()
             VersionNumber TEXT NOT NULL UNIQUE,
             CreationDate TIMESTAMPTZ NOT NULL, -- Use TIMESTAMPTZ for timezone awareness
             UpdateDate TIMESTAMPTZ,
