@@ -5,3 +5,4 @@ scratch.py
 *.xml
 *.pyc
 nemsis_xml/desktop.ini
+/__pycache__

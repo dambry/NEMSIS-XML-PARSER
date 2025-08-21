@@ -169,23 +169,26 @@ def get_table_columns(conn, table_name):
 def ensure_table_and_columns(
     conn, table_name_suggestion, element_attributes, common_db_columns
 ):
-    """Ensures a table exists with all necessary common and attribute-derived columns."""
+    """Ensures a table exists with all necessary common and attribute-derived columns. Returns (table_name_raw, columns, value_column_name)."""
     cursor = conn.cursor()
     table_name_raw = sanitize_xml_name(table_name_suggestion)
     if not table_name_raw:
         print("Error: Table name suggestion is empty after sanitization.")
-        return None, set()
+        return None, set(), None
 
     table_name = f'"{table_name_raw.lower()}"'
 
     existing_columns = get_table_columns(conn, table_name_raw)
+
+    # Generate dynamic column name for the text content based on table name (lowercase to match table naming)
+    value_column_name = f"{table_name_raw.lower()}_value"
 
     common_cols_sql = [
         '"element_id" TEXT PRIMARY KEY',
         '"parent_element_id" TEXT',
         '"pcr_uuid_context" TEXT',
         '"original_tag_name" TEXT',
-        '"text_content" TEXT',
+        f'"{value_column_name}" TEXT',
     ]
 
     if not existing_columns:
@@ -220,7 +223,7 @@ def ensure_table_and_columns(
         except psycopg2.Error as e:
             print(f"Error creating table {table_name}: {e}")
             conn.rollback()
-            return None, set()
+            return None, set(), None
 
     current_table_cols = get_table_columns(conn, table_name_raw)
     missing_attr_cols = set()
@@ -243,7 +246,7 @@ def ensure_table_and_columns(
             print(f"Error adding {col_name_quoted} to {table_name}: {e}")
             conn.rollback()
 
-    return table_name_raw, get_table_columns(conn, table_name_raw)
+    return table_name_raw, get_table_columns(conn, table_name_raw), value_column_name
 
 
 def delete_existing_pcr_data(conn, pcr_uuid):
@@ -342,12 +345,12 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
         if el.get("pcr_uuid_context"):
             unique_pcr_uuids_in_file.add(el["pcr_uuid_context"])
 
-    common_db_columns = {
+    # Note: common_db_columns will be updated dynamically per element with the actual value column name
+    base_common_db_columns = {
         "element_id",
         "parent_element_id",
         "pcr_uuid_context",
         "original_tag_name",
-        "text_content",
     }
 
     cursor = db_conn.cursor()
@@ -370,11 +373,13 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
             # Retrieve parent_table_suggestion from the element
             parent_table_suggestion_raw = element.get("parent_table_suggestion")
 
-            table_name_raw, actual_table_columns = ensure_table_and_columns(
-                db_conn,
-                element["table_suggestion"],
-                element["attributes"],
-                common_db_columns,
+            table_name_raw, actual_table_columns, value_column_name = (
+                ensure_table_and_columns(
+                    db_conn,
+                    element["table_suggestion"],
+                    element["attributes"],
+                    base_common_db_columns,
+                )
             )
 
             if not table_name_raw or not actual_table_columns:
@@ -406,7 +411,9 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                 "parent_element_id": element.get("parent_element_id"),
                 "pcr_uuid_context": element.get("pcr_uuid_context"),
                 "original_tag_name": element["element_tag"],
-                "text_content": element.get("text_content"),
+                value_column_name: element.get(
+                    "text_content"
+                ),  # Use dynamic column name
             }
             for attr_key, attr_value in element["attributes"].items():
                 insert_data[sanitize_xml_name(attr_key).lower()] = attr_value

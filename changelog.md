@@ -21,8 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Intelligent constraint naming with hash-based truncation for long names
   - FK constraint existence checking to prevent duplicates
   - CASCADE delete support for data consistency
+- **Database Migration System**: Added Alembic migration support
+  - Complete Alembic configuration for database schema versioning
+  - Migration scripts for schema changes
+  - Support for both new installations and existing database upgrades
 
 ### Changed
+- **Column Naming Architecture**: Complete overhaul from generic to semantic naming
+  - Changed from generic `text_content` column to dynamic `{table_name}_value` format
+  - Each table now has semantic column names (e.g., `evitals_01_value`, `edisposition_02_value`)
+  - Migration system ensures existing databases can be upgraded safely
+  - Updated XML parser and ingestion logic to generate appropriate column names
+  - BREAKING: Queries, views, and reports that referenced `text_content` must be updated.
+    - Example:
+      - Before: `SELECT text_content FROM public.eVitals_01;`
+      - After:  `SELECT evitals_01_value FROM public.eVitals_01;`
+    - If you had indexes/constraints/triggers on `text_content`, re-create them on the new `*_value` column.
 - **Database Setup (`database_setup.py`)**:
   - Updated table creation to support custom schemas
   - Added schema creation functionality
@@ -32,9 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added error file handling to all failure scenarios
   - Enhanced foreign key creation with comprehensive error handling
   - Improved logging with schema information
-- **View Creator (`view_creator.py`)**:
-  - Updated to work with custom schemas
-  - All view and table operations now schema-aware
+  - Modified to use dynamic column naming system
+- **XML Handler (`xml_handler.py`)**:
+  - Enhanced to generate dynamic column names based on element structure
+  - Added `value_column_name` field to element data for proper column mapping
 - **Configuration (`config.py`)**:
   - Added `PG_SCHEMA` configuration option
 
@@ -44,10 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed FastAPI, uvicorn, pydantic, and python-multipart dependencies
   - Updated `requirements.txt` to include only essential dependencies
   - Removed FastAPI documentation from README.md
-- **View and Structure Management**: Removed view creation components for separate future development
-  - Removed `view_creator.py` - view creation functionality to be rebuilt separately
+- **View Creation Components**: Removed automated view creation for manual implementation
+  - Removed `create_views.py` - views will be created manually based on specific schema requirements
+  - Removed automated view generation logic to allow for custom view design
+  - Removed `querying_guide.md` - to be recreated after manual views are implemented
+  - Updated documentation to reflect manual view creation approach
+- **Legacy Structure Management**: Removed outdated components
+  - Removed `view_creator.py` - view creation functionality replaced with manual approach
   - Removed `structures.py` - NEMSIS structure definitions to be redesigned
-  - Updated README.md to remove view creation documentation
 - **Redundant Configuration**: Cleaned up duplicate imports
   - Removed direct config imports from `main_ingest.py` where redundant
   - Streamlined dependency management
@@ -56,15 +75,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Improvements
 - **Better Error Handling**: Comprehensive error management across all modules
 - **Code Organization**: Cleaner separation of concerns between modules
-- **Database Schema Management**: Professional-grade schema support
+- **Database Schema Management**: Professional-grade schema support with migration system
 - **File Management**: Systematic handling of processed and failed files
 - **Foreign Key Integrity**: Automatic relationship management for data consistency
+- **Semantic Database Design**: Move from generic to self-documenting column names
+- **Migration Infrastructure**: Robust database versioning and upgrade system
 
 ### Migration Notes
-- **Backward Compatibility**: All changes maintain backward compatibility
-- **New Installations**: Can optionally specify `PG_SCHEMA` environment variable
-- **Existing Installations**: Will continue working with default "public" schema
-- **Dependencies**: Run `pip install -r requirements.txt` to update dependencies
+- **Column Naming Upgrade**: Existing databases can be migrated using `alembic upgrade head`
+  - Migrates from `text_content` to `{table_name}_value` column naming
+  - Safe rollback available with `alembic downgrade -1`
+  - No data loss during migration process
+- **New Installations**: Automatically use new column naming scheme
+- **Schema Support**: Can optionally specify `PG_SCHEMA` environment variable
+- **Dependencies**: Run `pip install -r requirements.txt` to install Alembic and other new dependencies
+- **View Creation**: Views must now be created manually - automated view creation removed
+- **Documentation**: Querying guide removed temporarily - will be recreated after views are implemented
 
 ---
 

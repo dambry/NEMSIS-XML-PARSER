@@ -20,7 +20,12 @@ def _sanitize_name(name):
 
 
 def _traverse_element_recursive(
-    element, parent_element_id, current_pcr_uuid, element_path_parts, processed_elements, parent_table_suggestion_for_child
+    element,
+    parent_element_id,
+    current_pcr_uuid,
+    element_path_parts,
+    processed_elements,
+    parent_table_suggestion_for_child,
 ):
     """Recursively traverses XML elements and collects their data."""
     element_id = str(uuid.uuid4())  # Unique ID for this element instance
@@ -57,6 +62,9 @@ def _traverse_element_recursive(
         if _sanitize_name("UUID") not in attributes:
             attributes[_sanitize_name("UUID")] = current_pcr_uuid
 
+    # Generate dynamic column name for text content based on sanitized element tag
+    value_column_name = f"{sanitized_local_tag}_value"
+
     element_data = {
         "element_id": element_id,
         "parent_element_id": parent_element_id,
@@ -65,6 +73,7 @@ def _traverse_element_recursive(
         "table_suggestion": table_suggestion,  # Based on sanitized local tag
         "attributes": attributes,  # Attributes are also sanitized (keys)
         "text_content": element.text.strip() if element.text else None,
+        "value_column_name": value_column_name,  # Dynamic column name for the text content
         "pcr_uuid_context": current_pcr_uuid,
         "parent_table_suggestion": parent_table_suggestion_for_child,
     }
@@ -72,7 +81,12 @@ def _traverse_element_recursive(
 
     for child in element:
         _traverse_element_recursive(
-            child, element_id, current_pcr_uuid, current_path_parts, processed_elements, element_data["table_suggestion"]
+            child,
+            element_id,
+            current_pcr_uuid,
+            current_path_parts,
+            processed_elements,
+            element_data["table_suggestion"],
         )
 
 
