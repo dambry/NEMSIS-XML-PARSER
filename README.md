@@ -19,10 +19,7 @@ While this tool is useful for creating an accessible database for use as a datal
 - Python 3.8+
 - PostgreSQL (with a database you can connect to)
 - Python packages:
-  - `psycopg2-binary`
-  - `python-dotenv`
-  - `requests`
-
+**Missing dependencies:** Install with `pip install -r requirements.txt`.
 Install dependencies:
 ```bash
 pip install -r requirements.txt
