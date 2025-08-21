@@ -44,11 +44,15 @@ def get_db_connection():
 def create_schema_if_not_exists(conn, schema_name):
     """Creates the schema if it doesn't exist."""
     if schema_name != "public":
-        with conn.cursor() as cursor:
-            cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}";')
-            print(f"Checked/Created schema: {schema_name}")
-        conn.commit()
-
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}";')
+                print(f"Checked/Created schema: {schema_name}")
+            conn.commit()
+        except psycopg2.Error as e:
+            print(f"Error creating schema {schema_name}: {e}")
+            conn.rollback()
+            raise
 
 def create_tables(conn, schema=PG_SCHEMA):
     """Creates the initial database tables if they don't exist (PostgreSQL syntax)."""
