@@ -27,7 +27,7 @@ Each dynamically created table contains several common columns that are essentia
 *   `parent_element_id` (TEXT): For child elements, this column stores the `element_id` of its direct parent element. For root elements of a section (e.g., the main `evitals` element), this will be `NULL`.
 *   `pcr_uuid_context` (TEXT): The UUID of the PatientCareReport this element belongs to. Useful for filtering data for a specific report.
 *   `original_tag_name` (TEXT): The original XML tag name before sanitization (e.g., `eVitals.VitalGroup`).
-*   `text_content` (TEXT): The text content of the XML element, if any.
+*   `{table_name}_value` (TEXT): The text content of the XML element, stored in a per-table column named after the table (e.g., `evitals_01_value`).
 *   Additional columns are dynamically added based on the attributes found in the XML elements. For example, if an element `<eVitals.01 DateTime="2023-01-01T12:00:00">` exists, the `evitals_01` table would likely have a `datetime` column.
 
 ## Querying Parent-Child Relationships
@@ -43,7 +43,7 @@ SELECT
     vg.element_id AS vitalgroup_id,
     vg.pcr_uuid_context,
     e01.element_id AS evitals01_id,
-    e01.text_content AS evitals01_text_content,
+    e01.evitals_01_value AS evitals01_value,
     -- Assuming evitals_01 has a 'datetime' column from an attribute
     e01.datetime AS evitals01_datetime
 FROM
@@ -157,7 +157,7 @@ WITH RECURSIVE vital_hierarchy AS (
         parent_element_id,
         pcr_uuid_context,
         original_tag_name,
-        text_content,
+        evitals_vitalgroup_value,
         NULL AS datetime_value, -- Placeholder for eVitals.01 specific column
         0 as level
     FROM evitals_vitalgroup
@@ -171,7 +171,7 @@ WITH RECURSIVE vital_hierarchy AS (
         child.parent_element_id,
         child.pcr_uuid_context,
         child.original_tag_name,
-        child.text_content,
+        child.evitals_01_value,
         child.datetime AS datetime_value, -- Actual column from evitals_01
         vh.level + 1
     FROM evitals_01 child
@@ -186,7 +186,7 @@ WITH RECURSIVE vital_hierarchy AS (
         child_group.parent_element_id,
         child_group.pcr_uuid_context,
         child_group.original_tag_name,
-        child_group.text_content,
+        child_group.evitals_cardiacrhythmgroup_value,
         NULL, -- No datetime for this group
         vh.level + 1
     FROM evitals_cardiacrhythmgroup child_group

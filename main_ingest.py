@@ -180,12 +180,14 @@ def ensure_table_and_columns(
 
     existing_columns = get_table_columns(conn, table_name_raw)
 
+    # Use a per-table value column instead of generic text_content
+    value_col_name_lower = f"{table_name_raw.lower()}_value"
     common_cols_sql = [
         '"element_id" TEXT PRIMARY KEY',
         '"parent_element_id" TEXT',
         '"pcr_uuid_context" TEXT',
         '"original_tag_name" TEXT',
-        '"text_content" TEXT',
+        f'"{value_col_name_lower}" TEXT',
     ]
 
     if not existing_columns:
@@ -223,6 +225,26 @@ def ensure_table_and_columns(
             return None, set()
 
     current_table_cols = get_table_columns(conn, table_name_raw)
+    # One-time migration: if legacy text_content exists but new value column does not, rename it
+    if "text_content" in current_table_cols and value_col_name_lower not in current_table_cols:
+        table_name_quoted = f'"{PG_SCHEMA}"."{table_name_raw.lower()}"'
+        try:
+            cursor.execute(
+                f"ALTER TABLE {table_name_quoted} RENAME COLUMN \"text_content\" TO \"{value_col_name_lower}\";"
+            )
+            if table_name_raw in _table_column_cache:
+                _table_column_cache[table_name_raw].discard("text_content")
+                _table_column_cache[table_name_raw].add(value_col_name_lower)
+            current_table_cols = get_table_columns(conn, table_name_raw)
+            print(
+                f"Renamed legacy column text_content to {value_col_name_lower} on {table_name_quoted}"
+            )
+        except psycopg2.Error as e:
+            print(
+                f"Error renaming text_content to {value_col_name_lower} on {table_name_quoted}: {e}"
+            )
+            conn.rollback()
+
     missing_attr_cols = set()
     for attr in element_attributes.keys():
         sanitized_attr = sanitize_xml_name(attr).lower()
@@ -260,7 +282,7 @@ def delete_existing_pcr_data(conn, pcr_uuid):
                 """
                 SELECT table_name FROM information_schema.tables 
                 WHERE table_schema = %s AND table_type = 'BASE TABLE'
-                AND table_name NOT LIKE 'pg_%%'
+                AND table_name NOT LIKE 'pg_%'
                 AND table_name NOT IN ('SchemaVersions', 'XMLFilesProcessed')
             """,
                 (PG_SCHEMA,),
@@ -342,12 +364,12 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
         if el.get("pcr_uuid_context"):
             unique_pcr_uuids_in_file.add(el["pcr_uuid_context"])
 
+    # This set is unused in ensure_table_and_columns but retained for clarity
     common_db_columns = {
         "element_id",
         "parent_element_id",
         "pcr_uuid_context",
         "original_tag_name",
-        "text_content",
     }
 
     cursor = db_conn.cursor()
@@ -401,12 +423,13 @@ def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
                     )
 
             # Prepare data for insertion
+            value_col_name_lower = f"{table_name_raw.lower()}_value"
             insert_data = {
                 "element_id": element["element_id"],
                 "parent_element_id": element.get("parent_element_id"),
                 "pcr_uuid_context": element.get("pcr_uuid_context"),
                 "original_tag_name": element["element_tag"],
-                "text_content": element.get("text_content"),
+                value_col_name_lower: element.get("text_content"),
             }
             for attr_key, attr_value in element["attributes"].items():
                 insert_data[sanitize_xml_name(attr_key).lower()] = attr_value

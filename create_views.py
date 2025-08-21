@@ -37,27 +37,27 @@ def create_eairway_view():
                 -- Aggregate eAirway.01 (0:M) - Indications for Invasive Airway
                 SELECT 
                     pcr_uuid_context,
-                    STRING_AGG(DISTINCT text_content, '; ' ORDER BY text_content) as indications_list
+                    STRING_AGG(DISTINCT eairway_01_value, '; ' ORDER BY eairway_01_value) as indications_list
                 FROM eairway_01
-                WHERE text_content IS NOT NULL AND text_content != ''
+                WHERE eairway_01_value IS NOT NULL AND eairway_01_value != ''
                 GROUP BY pcr_uuid_context
             ),
             airway_complications AS (
                 -- Aggregate eAirway.08 (0:M) - Airway Complications Encountered  
                 SELECT 
                     pcr_uuid_context,
-                    STRING_AGG(DISTINCT text_content, '; ' ORDER BY text_content) as complications_list
+                    STRING_AGG(DISTINCT eairway_08_value, '; ' ORDER BY eairway_08_value) as complications_list
                 FROM eairway_08
-                WHERE text_content IS NOT NULL AND text_content != ''
+                WHERE eairway_08_value IS NOT NULL AND eairway_08_value != ''
                 GROUP BY pcr_uuid_context
             ),
             airway_failure_reasons AS (
                 -- Aggregate eAirway.09 (0:M) - Suspected Reasons for Failed Airway Management
                 SELECT 
                     pcr_uuid_context,
-                    STRING_AGG(DISTINCT text_content, '; ' ORDER BY text_content) as failure_reasons_list
+                    STRING_AGG(DISTINCT eairway_09_value, '; ' ORDER BY eairway_09_value) as failure_reasons_list
                 FROM eairway_09
-                WHERE text_content IS NOT NULL AND text_content != ''
+                WHERE eairway_09_value IS NOT NULL AND eairway_09_value != ''
                 GROUP BY pcr_uuid_context
             ),
             airway_confirmation_methods AS (
@@ -65,10 +65,10 @@ def create_eairway_view():
                 -- This is within ConfirmationGroup, so we need to join through the confirmation groups
                 SELECT 
                     cg.pcr_uuid_context,
-                    STRING_AGG(DISTINCT a04.text_content, '; ' ORDER BY a04.text_content) as confirmation_methods_list
+                    STRING_AGG(DISTINCT a04.eairway_04_value, '; ' ORDER BY a04.eairway_04_value) as confirmation_methods_list
                 FROM eairway_confirmationgroup cg
                 LEFT JOIN eairway_04 a04 ON a04.parent_element_id = cg.element_id
-                WHERE a04.text_content IS NOT NULL AND a04.text_content != ''
+                WHERE a04.eairway_04_value IS NOT NULL AND a04.eairway_04_value != ''
                 GROUP BY cg.pcr_uuid_context
             ),
             airway_confirmations AS (
@@ -77,11 +77,11 @@ def create_eairway_view():
                     pcr_uuid_context,
                     COUNT(*) as confirmation_count,
                     STRING_AGG(DISTINCT 
-                        CASE WHEN text_content IS NOT NULL AND text_content != '' 
-                             THEN 'Confirmation: ' || text_content 
+                        CASE WHEN eairway_confirmationgroup_value IS NOT NULL AND eairway_confirmationgroup_value != '' 
+                             THEN 'Confirmation: ' || eairway_confirmationgroup_value 
                              ELSE NULL END, 
-                        '; ' ORDER BY CASE WHEN text_content IS NOT NULL AND text_content != '' 
-                                          THEN 'Confirmation: ' || text_content 
+                        '; ' ORDER BY CASE WHEN eairway_confirmationgroup_value IS NOT NULL AND eairway_confirmationgroup_value != '' 
+                                          THEN 'Confirmation: ' || eairway_confirmationgroup_value 
                                           ELSE NULL END
                     ) as confirmations_summary
                 FROM eairway_confirmationgroup
