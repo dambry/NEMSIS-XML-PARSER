@@ -33,7 +33,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema: Rename text_content columns to {table_name}_value."""
+    """
+    Rename dynamic tables' 'text_content' columns to '{table_name}_value'.
+    
+    Scans the configured PG_SCHEMA for base tables that contain a column named
+    'text_content' (excluding tables named 'SchemaVersions', 'XMLFilesProcessed'
+    and any table with a name starting with 'pg_'), and for each match issues an
+    ALTER TABLE ... RENAME COLUMN statement to rename 'text_content' to
+    '{table_name}_value'. Prints progress to stdout and performs changes via raw
+    SQL executed on the migration connection.
+    """
     # Get database connection
     conn = op.get_bind()
 
@@ -75,7 +84,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema: Rename {table_name}_value columns back to text_content."""
+    """
+    Downgrade migration: rename dynamic "{table_name}_value" columns back to "text_content".
+    
+    Finds all base tables in PG_SCHEMA whose column name equals "{table_name}_value" (excludes SchemaVersions, XMLFilesProcessed, and tables with names starting with "pg_") and executes ALTER TABLE ... RENAME COLUMN to revert each matching column to "text_content". Prints the number of affected tables and progress messages to stdout.
+    """
     # Get database connection
     conn = op.get_bind()
 

@@ -169,7 +169,31 @@ def get_table_columns(conn, table_name):
 def ensure_table_and_columns(
     conn, table_name_suggestion, element_attributes, common_db_columns
 ):
-    """Ensures a table exists with all necessary common and attribute-derived columns. Returns (table_name_raw, columns, value_column_name)."""
+    """
+    Ensure a sanitized table exists for the given XML element and that it contains the required common and attribute-derived columns.
+    
+    This will:
+    - Sanitize table_name_suggestion to produce the final table name (returned as table_name_raw).
+    - Create the table in PG_SCHEMA if it does not exist, including a dynamic per-table text column named "<table>_value" (lowercase) plus standard common columns:
+      element_id (PRIMARY KEY), parent_element_id, pcr_uuid_context, original_tag_name, and the dynamic value column.
+    - Add any missing attribute-derived TEXT columns (sanitized) to the existing table.
+    - Cache the discovered/created column names in the module-level _table_column_cache.
+    
+    Parameters:
+    - table_name_suggestion (str): Suggested XML tag/name to use as the table name (will be sanitized).
+    - element_attributes (Mapping[str, Any]): Attributes from the XML element; keys are sanitized and added as TEXT columns when needed.
+    - common_db_columns (Iterable[str]): Base/common column names used by the ingestion logic (informational; table creation uses its own common set).
+    
+    Returns:
+    - tuple (table_name_raw, columns_set, value_column_name):
+        - table_name_raw (str | None): Sanitized table name (unquoted). None if sanitization failed or on a creation error.
+        - columns_set (set): Set of existing column names (lowercase) for the table after creation/alteration. Empty set on error.
+        - value_column_name (str | None): Name of the per-table text column (lowercase "<table>_value"). None on error.
+    
+    Notes:
+    - On PostgreSQL errors during creation/alteration the function attempts to roll back and returns (None, set(), None) or returns the current state after partial changes.
+    - The function writes to the database and updates _table_column_cache; callers should provide a valid DB connection and handle transaction scope.
+    """
     cursor = conn.cursor()
     table_name_raw = sanitize_xml_name(table_name_suggestion)
     if not table_name_raw:
@@ -250,7 +274,17 @@ def ensure_table_and_columns(
 
 
 def delete_existing_pcr_data(conn, pcr_uuid):
-    """Deletes all records associated with a given pcr_uuid across all dynamic tables."""
+    """
+    Delete all rows referencing a PCR UUID from every dynamic table in the configured schema.
+    
+    Scans all base tables in PG_SCHEMA (excluding system tables and the static SchemaVersions/XMLFilesProcessed tables). For each table that contains a pcr_uuid_context column, deletes rows where pcr_uuid_context equals the provided pcr_uuid and prints per-table and total deletion counts.
+    
+    Parameters:
+        pcr_uuid (str): The PatientCareReport UUID whose associated rows should be removed. If falsy, the function returns immediately.
+    
+    Raises:
+        psycopg2.Error: Propagates database errors encountered while listing tables or performing deletes.
+    """
     if not pcr_uuid:
         return
     print(
@@ -295,6 +329,29 @@ def delete_existing_pcr_data(conn, pcr_uuid):
 
 
 def process_xml_file(db_conn, xml_file_path, ingestion_schema_id):
+    """
+    Process a single XML file, stage its data into dynamic PostgreSQL tables, create necessary foreign keys, and archive or move the file on error.
+    
+    Parses the XML at `xml_file_path` into element records, computes a processed-file UUID and MD5, deletes any existing data for PCR UUIDs present in the file, ensures per-element destination tables and attribute columns (including a dynamic per-table value column) exist, inserts each element row, attempts to create any inferred parent→child foreign key constraints (ON DELETE CASCADE), and commits the transaction. On success the file is archived and a processed-file record is logged; on any database or unexpected error the transaction is rolled back, an error record is logged, and the file is moved to the error directory. The per-run table column cache is cleared after processing.
+    
+    Parameters:
+        xml_file_path (str): Path to the XML file to ingest. If missing or unreadable (MD5 failure), the file is logged and moved to the error directory.
+        ingestion_schema_id (int): Identifier of the ingestion logic schema version used when logging processed-file records.
+    
+    Returns:
+        bool: True if the file was fully processed, staged, committed, logged, and archived; False if processing failed (file moved to error directory and an error log record created).
+    
+    Side effects:
+        - Inserts/updates/deletes rows across dynamic tables in the configured PostgreSQL schema.
+        - May CREATE or ALTER tables to add attribute columns and a per-table dynamic value column.
+        - May CREATE foreign-key constraints (name truncated or hashed to respect PostgreSQL limits).
+        - Writes processed-file status records to the XMLFilesProcessed table.
+        - Moves the XML file to ARCHIVE_DIR on success or ERROR_DIR on failure.
+    
+    Errors:
+        - Database errors cause a transaction rollback and result in False being returned.
+        - XML parsing errors or empty parse results cause the file to be logged and moved to the error directory and return False.
+    """
     print(f"\nProcessing XML: {xml_file_path}")
     processed_file_id = generate_unique_file_id()
     original_file_name = os.path.basename(xml_file_path)
